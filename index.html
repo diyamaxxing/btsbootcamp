@@ -65,6 +65,31 @@
       return ALL_ERAS.findIndex(e => e.name === eraName);
     }
 
+    // ── scoring ──────────────────────────────────────────────────────────────
+    // Phase 1: YouTube signals only.
+    // Phase 2 (Issue #13): add userProgress arg and weight user likes/watches
+    // heavier — scoreVideo(v, userProgress).
+    function scoreVideo(v) {
+      const views = Math.log10((v.view_count || 0) + 1);
+      const likes = Math.log10((v.like_count || 0) + 1);
+      return views * 0.7 + likes * 0.3;
+    }
+
+    function topN(videos, n) {
+      return [...videos]
+        .filter(v => v.status === "active")
+        .sort((a, b) => scoreVideo(b) - scoreVideo(a))
+        .slice(0, n);
+    }
+
+    function recentTopN(videos, n, days = 90) {
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - days);
+      const cutoffStr = cutoff.toISOString().slice(0, 10);
+      const recent = videos.filter(v => v.air_date && v.air_date >= cutoffStr);
+      return topN(recent.length >= n ? recent : videos, n);
+    }
+
     function applyFilters(videos) {
       const fromIdx = state.eraFrom ? eraIndex(state.eraFrom) : -Infinity;
       const toIdx   = state.eraTo   ? eraIndex(state.eraTo)   :  Infinity;
@@ -209,12 +234,21 @@
     }
 
     // ── cards ────────────────────────────────────────────────────────────────
+    function fmtViews(n) {
+      if (!n) return "";
+      if (n >= 1e9) return (n / 1e9).toFixed(1) + "B";
+      if (n >= 1e6) return (n / 1e6).toFixed(1) + "M";
+      if (n >= 1e3) return (n / 1e3).toFixed(1) + "K";
+      return n.toString();
+    }
+
     function renderCard(v) {
+      const meta = [v.era, fmtViews(v.view_count) ? fmtViews(v.view_count) + " views" : ""].filter(Boolean).join(" · ");
       return `
         <a class="card" href="pages/player.html?id=${encodeURIComponent(v.id)}">
           <img src="${v.thumbnail}" alt="${v.title}" loading="lazy" />
           <p class="card-title">${v.title}</p>
-          ${v.era ? `<p class="card-meta">${v.era}</p>` : ""}
+          ${meta ? `<p class="card-meta">${meta}</p>` : ""}
         </a>`;
     }
 
@@ -236,12 +270,42 @@
         <div id="grid">${filtered.map(renderCard).join("")}</div>`;
     }
 
-    // ── unfiltered: carousels + era grid ─────────────────────────────────────
+    // ── unfiltered: hero + scored carousels + era grid ───────────────────────
+    function renderHero(videos) {
+      const hero = recentTopN(videos, 1)[0];
+      if (!hero) return "";
+      return `
+        <section id="hero">
+          <a href="pages/player.html?id=${encodeURIComponent(hero.id)}">
+            <img src="${hero.thumbnail}" alt="${hero.title}" />
+            <div id="hero-meta">
+              <p id="hero-type">${hero.type}${hero.era ? ` · ${hero.era}` : ""}</p>
+              <h2>${hero.title}</h2>
+              <p id="hero-stats">${(hero.view_count||0).toLocaleString()} views · ${(hero.like_count||0).toLocaleString()} likes</p>
+            </div>
+          </a>
+        </section>`;
+    }
+
     function renderByType() {
       const active = ALL_VIDEOS.filter(v => v.status === "active");
 
+      const trending  = topN(active, 20);
+      const mostLoved = [...active].sort((a,b) => (b.like_count||0) - (a.like_count||0)).slice(0, 20);
+
+      const featuredCarousels = `
+        <section class="carousel">
+          <h2>Trending</h2>
+          <div class="rail">${trending.map(renderCard).join("")}</div>
+        </section>
+        <section class="carousel">
+          <h2>Most Loved</h2>
+          <div class="rail">${mostLoved.map(renderCard).join("")}</div>
+        </section>`;
+
       const carousels = ALL_TYPES.map(type => {
-        const videos = active.filter(v => v.type === type);
+        const videos = [...active.filter(v => v.type === type)]
+          .sort((a, b) => scoreVideo(b) - scoreVideo(a));
         if (!videos.length) return "";
         const disclaimer = type === "Run BTS"
           ? `<p class="disclaimer">Run BTS originally aired on V LIVE and is not sorted by era.</p>`
@@ -265,7 +329,7 @@
           </button>`;
       }).join("");
 
-      document.getElementById("results").innerHTML = carousels + `
+      document.getElementById("results").innerHTML = renderHero(active) + featuredCarousels + carousels + `
         <section id="era-section">
           <h2>Browse by Era</h2>
           <div id="era-grid">${eraCards}</div>

@@ -27,7 +27,7 @@ if not API_KEY:
     raise SystemExit("Error: YOUTUBE_API_KEY environment variable not set.")
 
 RAWS_DIR = Path(__file__).parent.parent / "data" / "raws"
-FIELDS = ["id", "title", "upload_date", "air_date", "era", "type", "series", "episode", "url", "thumbnail", "members", "subtitles", "duration_sec", "description", "status"]
+FIELDS = ["id", "title", "upload_date", "air_date", "era", "type", "series", "episode", "url", "thumbnail", "members", "subtitles", "duration_sec", "description", "status", "view_count", "like_count"]
 
 BULK_UPLOAD_DATE = "2022-12-24"  # date BTS batch-uploaded old V Live content to YouTube
 
@@ -109,12 +109,12 @@ def fetch_all_playlist_items(playlist_id):
 
 
 def fetch_video_details(video_ids):
-    """Fetch publishedAt + duration for up to 50 IDs at a time."""
+    """Fetch publishedAt, duration, and statistics for up to 50 IDs at a time."""
     details = {}
     for i in range(0, len(video_ids), 50):
         batch = video_ids[i:i + 50]
         data = api_get("videos", {
-            "part": "snippet,contentDetails",
+            "part": "snippet,contentDetails,statistics",
             "id":   ",".join(batch),
         })
         for item in data.get("items", []):
@@ -123,10 +123,13 @@ def fetch_video_details(video_ids):
             duration    = iso8601_to_sec(item["contentDetails"]["duration"])
             title       = item["snippet"].get("title", "")
             status      = "private" if title == "Private video" else "active"
+            stats       = item.get("statistics", {})
             details[vid_id] = {
-                "upload_date": upload_date,
+                "upload_date":  upload_date,
                 "duration_sec": duration,
-                "status": status,
+                "status":       status,
+                "view_count":   int(stats.get("viewCount",  0) or 0),
+                "like_count":   int(stats.get("likeCount",  0) or 0),
             }
         time.sleep(0.1)
     return details
@@ -215,6 +218,8 @@ def process_playlist(pl):
             "duration_sec": detail.get("duration_sec", ""),
             "description":  prev.get("description", ""),
             "status":       status,
+            "view_count":   detail.get("view_count", 0),
+            "like_count":   detail.get("like_count", 0),
         })
 
     with open(out_path, "w", newline="", encoding="utf-8") as f:

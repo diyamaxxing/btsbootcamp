@@ -138,6 +138,54 @@ select {
   margin-left: 4px;
 }
 
+/* ── hero ──────────────────────────────────────────────────────────────── */
+#hero {
+  position: relative;
+  margin-bottom: 32px;
+}
+
+#hero a {
+  display: block;
+  text-decoration: none;
+  position: relative;
+}
+
+#hero img {
+  width: 100%;
+  max-height: 360px;
+  object-fit: cover;
+  display: block;
+  background: #1a1a1a;
+}
+
+#hero-meta {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 40px 24px 20px;
+  background: linear-gradient(transparent, rgba(0,0,0,0.9));
+}
+
+#hero-type {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #aaa;
+  margin-bottom: 6px;
+}
+
+#hero-meta h2 {
+  font-size: 22px;
+  color: #f0f0f0;
+  margin-bottom: 6px;
+}
+
+#hero-stats {
+  font-size: 12px;
+  color: #777;
+}
+
 /* ── carousels (unfiltered) ────────────────────────────────────────────── */
 .carousel { margin-bottom: 40px; }
 

@@ -77,6 +77,9 @@ def coerce_row(row, eras):
     else:
         era = assign_era(air_date, eras)
 
+    view_raw = row.get("view_count", "").strip()
+    like_raw = row.get("like_count", "").strip()
+
     return {
         "id":           row.get("id", "").strip(),
         "title":        row.get("title", "").strip(),
@@ -93,6 +96,8 @@ def coerce_row(row, eras):
         "duration_sec": duration_sec,
         "description":  row.get("description", "").strip() or None,
         "status":       row.get("status", "active").strip() or "active",
+        "view_count":   int(view_raw) if view_raw.isdigit() else 0,
+        "like_count":   int(like_raw) if like_raw.isdigit() else 0,
     }
 
 
