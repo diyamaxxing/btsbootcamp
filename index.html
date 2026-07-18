@@ -94,13 +94,13 @@
     }
 
     // ── stats bar ────────────────────────────────────────────────────────────
-    function renderStats(videos) {
-      const active   = videos.filter(v => v.status === "active");
+    function renderStats() {
+      const active   = ALL_VIDEOS.filter(v => v.status === "active");
       const totalSec = active.reduce((s, v) => s + (v.duration_sec || 0), 0);
       const eras     = new Set(active.map(v => v.era).filter(Boolean)).size;
       const since    = active.filter(v => v.air_date).sort((a, b) => a.air_date.localeCompare(b.air_date))[0];
 
-      const typeCounts = TYPES.map(t => {
+      const typeCounts = ALL_TYPES.map(t => {
         const n = active.filter(v => v.type === t).length;
         return `<div class="stat"><span class="stat-num">${n.toLocaleString()}</span><span class="stat-label">${t}s</span></div>`;
       }).join("");
@@ -302,7 +302,7 @@
       ALL_VIDEOS = videos;
       ALL_ERAS   = eras;
       ALL_TYPES  = [...new Set(videos.map(v => v.type))].sort();
-      renderStats(videos);
+      renderStats();
       render();
     }).catch(err => {
       document.getElementById("results").innerHTML = `<p>Error: ${err.message}</p>`;
