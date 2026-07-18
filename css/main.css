@@ -11,12 +11,18 @@ body {
 nav {
   padding: 12px 20px;
   border-bottom: 1px solid #222;
+  display: flex;
+  align-items: center;
+  gap: 20px;
 }
 
 nav a {
   color: #f0f0f0;
   text-decoration: none;
+  font-size: 14px;
 }
+
+nav a:last-child { margin-left: auto; }
 
 main {
   padding: 20px;
