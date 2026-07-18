@@ -22,6 +22,7 @@ CSV_FILES = [
     "bangtan_bombs.csv",
     "dance_practices.csv",
     "run_bts.csv",
+    "bts_episodes.csv",
 ]
 
 # types excluded from era auto-assignment

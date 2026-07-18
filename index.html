@@ -16,7 +16,10 @@
     <div id="stats-bar"></div>
 
     <div id="filters">
-      <div id="type-pills"></div>
+      <div id="type-dropdown-wrap">
+        <button id="type-toggle">Type <span id="type-badge"></span>▾</button>
+        <div id="type-menu" class="hidden"></div>
+      </div>
       <div id="dropdowns">
         <div class="range-group">
           <label>Era</label>
@@ -40,7 +43,7 @@
   <script>
     // ── state ────────────────────────────────────────────────────────────────
     const state = {
-      type:    null,
+      types:   new Set(),   // empty = all types shown
       eraFrom: null,
       eraTo:   null,
       yearFrom: null,
@@ -49,7 +52,7 @@
 
     let ALL_VIDEOS = [];
     let ALL_ERAS   = [];
-    const TYPES    = ["MV", "Run BTS", "Bangtan Bomb", "Dance Practice"];
+    let ALL_TYPES  = [];    // derived from data on boot
 
     // ── utils ────────────────────────────────────────────────────────────────
     function fmtHours(sec) {
@@ -68,12 +71,12 @@
 
       return videos.filter(v => {
         if (v.status !== "active") return false;
-        if (state.type && v.type !== state.type) return false;
+        if (state.types.size && !state.types.has(v.type)) return false;
 
         // era range
         if (state.eraFrom || state.eraTo) {
           const idx = eraIndex(v.era);
-          if (idx === -1) return false;           // no era assigned
+          if (idx === -1) return false;
           if (idx < fromIdx || idx > toIdx) return false;
         }
 
@@ -87,7 +90,7 @@
     }
 
     function isFiltered() {
-      return state.type || state.eraFrom || state.eraTo || state.yearFrom || state.yearTo;
+      return state.types.size || state.eraFrom || state.eraTo || state.yearFrom || state.yearTo;
     }
 
     // ── stats bar ────────────────────────────────────────────────────────────
@@ -113,6 +116,33 @@
     }
 
     // ── filter controls ──────────────────────────────────────────────────────
+    function renderTypeDropdown() {
+      const badge  = state.types.size ? `<span id="type-badge">${state.types.size}</span>` : "";
+      document.getElementById("type-toggle").innerHTML = `Type ${badge} ▾`;
+
+      const items = ALL_TYPES.map(t => {
+        const checked = state.types.has(t) ? "checked" : "";
+        return `<label class="type-option">
+          <input type="checkbox" value="${t}" ${checked} /> ${t}
+        </label>`;
+      }).join("");
+      document.getElementById("type-menu").innerHTML = items;
+
+      document.getElementById("type-menu").querySelectorAll("input").forEach(cb => {
+        cb.addEventListener("change", () => {
+          cb.checked ? state.types.add(cb.value) : state.types.delete(cb.value);
+          render();
+        });
+      });
+
+      // toggle open/close
+      const toggle = document.getElementById("type-toggle");
+      toggle.onclick = (e) => {
+        e.stopPropagation();
+        document.getElementById("type-menu").classList.toggle("hidden");
+      };
+    }
+
     function populateEraSelects() {
       const options = ALL_ERAS.map(e => `<option value="${e.name}">${e.name}</option>`).join("");
       document.getElementById("era-from").innerHTML = `<option value="">From</option>${options}`;
@@ -132,17 +162,6 @@
       document.getElementById("year-to").value   = state.yearTo   || "";
     }
 
-    function renderTypePills() {
-      document.getElementById("type-pills").innerHTML = ["All", ...TYPES].map(t => {
-        const isActive = (t === "All" && !state.type) || t === state.type;
-        return `<button class="pill${isActive ? " active" : ""}" data-type="${t === "All" ? "" : t}">${t}</button>`;
-      }).join("");
-
-      document.getElementById("type-pills").querySelectorAll(".pill").forEach(btn => {
-        btn.addEventListener("click", () => { state.type = btn.dataset.type || null; render(); });
-      });
-    }
-
     function bindDropdowns() {
       document.getElementById("era-from").addEventListener("change",  e => { state.eraFrom  = e.target.value || null; render(); });
       document.getElementById("era-to").addEventListener("change",    e => { state.eraTo    = e.target.value || null; render(); });
@@ -153,9 +172,9 @@
     // ── active filter tags ───────────────────────────────────────────────────
     function renderActiveFilters() {
       const tags = [];
-      if (state.type)    tags.push(tag(state.type, "type"));
-      if (state.eraFrom) tags.push(tag(`Era from: ${state.eraFrom}`, "eraFrom"));
-      if (state.eraTo)   tags.push(tag(`Era to: ${state.eraTo}`, "eraTo"));
+      state.types.forEach(t => tags.push(typeTag(t)));
+      if (state.eraFrom)  tags.push(tag(`Era from: ${state.eraFrom}`, "eraFrom"));
+      if (state.eraTo)    tags.push(tag(`Era to: ${state.eraTo}`, "eraTo"));
       if (state.yearFrom) tags.push(tag(`From ${state.yearFrom}`, "yearFrom"));
       if (state.yearTo)   tags.push(tag(`To ${state.yearTo}`, "yearTo"));
 
@@ -163,7 +182,8 @@
       if (tags.length) {
         el.innerHTML = `<div id="tag-row">${tags.join("")} <button id="clear-all">Clear all</button></div>`;
         el.querySelector("#clear-all").addEventListener("click", () => {
-          Object.keys(state).forEach(k => state[k] = null);
+          state.types.clear();
+          state.eraFrom = state.eraTo = state.yearFrom = state.yearTo = null;
           render();
         });
       } else {
@@ -171,12 +191,21 @@
       }
 
       el.querySelectorAll("[data-clear]").forEach(btn => {
-        btn.addEventListener("click", () => { state[btn.dataset.clear] = null; render(); });
+        btn.addEventListener("click", () => {
+          const k = btn.dataset.clear;
+          if (k === "type") state.types.delete(btn.dataset.value);
+          else state[k] = null;
+          render();
+        });
       });
     }
 
     function tag(label, clearKey) {
       return `<span class="tag">${label} <button data-clear="${clearKey}">×</button></span>`;
+    }
+
+    function typeTag(t) {
+      return `<span class="tag">${t} <button data-clear="type" data-value="${t}">×</button></span>`;
     }
 
     // ── cards ────────────────────────────────────────────────────────────────
@@ -196,7 +225,7 @@
         document.getElementById("results").innerHTML = `<p class="empty">No videos match these filters.</p>`;
         return;
       }
-      const disclaimer = state.type === "Run BTS"
+      const disclaimer = state.types.has("Run BTS") && state.types.size === 1
         ? `<p class="disclaimer">Run BTS originally aired on V LIVE and is not sorted by era.</p>`
         : "";
       document.getElementById("results").innerHTML = `
@@ -211,7 +240,7 @@
     function renderByType() {
       const active = ALL_VIDEOS.filter(v => v.status === "active");
 
-      const carousels = TYPES.map(type => {
+      const carousels = ALL_TYPES.map(type => {
         const videos = active.filter(v => v.type === type);
         if (!videos.length) return "";
         const disclaimer = type === "Run BTS"
@@ -253,7 +282,7 @@
 
     // ── main render ──────────────────────────────────────────────────────────
     function render() {
-      renderTypePills();
+      renderTypeDropdown();
       populateEraSelects();
       populateYearSelects();
       bindDropdowns();
@@ -262,12 +291,17 @@
     }
 
     // ── boot ─────────────────────────────────────────────────────────────────
+    document.addEventListener("click", () => {
+      document.getElementById("type-menu")?.classList.add("hidden");
+    });
+
     Promise.all([
       fetch("data/videos.json").then(r => r.json()),
       fetch("data/eras.json").then(r => r.json()),
     ]).then(([videos, eras]) => {
       ALL_VIDEOS = videos;
       ALL_ERAS   = eras;
+      ALL_TYPES  = [...new Set(videos.map(v => v.type))].sort();
       renderStats(videos);
       render();
     }).catch(err => {

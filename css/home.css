@@ -24,22 +24,56 @@
   margin-bottom: 16px;
 }
 
-#type-pills { display: flex; flex-wrap: wrap; gap: 8px; }
+/* type checkbox dropdown */
+#type-dropdown-wrap { position: relative; }
 
-.pill {
+#type-toggle {
   padding: 6px 14px;
   border: 1px solid #333;
   background: transparent;
   color: #aaa;
   font-size: 13px;
   cursor: pointer;
+  white-space: nowrap;
 }
 
-.pill.active {
-  border-color: #f0f0f0;
-  color: #f0f0f0;
-  background: #1a1a1a;
+#type-toggle #type-badge {
+  display: inline-block;
+  background: #f0f0f0;
+  color: #0d0d0d;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 10px;
+  padding: 1px 6px;
+  margin-right: 4px;
 }
+
+#type-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  background: #111;
+  border: 1px solid #333;
+  z-index: 100;
+  min-width: 180px;
+  padding: 8px 0;
+}
+
+#type-menu.hidden { display: none; }
+
+.type-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  font-size: 13px;
+  color: #ccc;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.type-option:hover { background: #1a1a1a; }
+.type-option input { cursor: pointer; accent-color: #f0f0f0; }
 
 #dropdowns { display: flex; flex-wrap: wrap; gap: 16px; }
 

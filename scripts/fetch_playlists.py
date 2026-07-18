@@ -60,6 +60,13 @@ PLAYLISTS = [
         "id_prefix":   "run-bts",
         "out_file":    "run_bts.csv",
     },
+    {
+        "playlist_id": "PL5hrGMysD_Gt2ekpVt25B6C5ozZjVxQdh",
+        "type":        "BTS Episode",
+        "series":      "BTS Episode",
+        "id_prefix":   "episode",
+        "out_file":    "bts_episodes.csv",
+    },
 ]
 
 
