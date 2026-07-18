@@ -1,0 +1,20 @@
+[
+  { "id": "2-cool-4-skool",           "name": "2 Cool 4 Skool",          "start": "2013-05-27" },
+  { "id": "o-rul8-2",                 "name": "O!RUL8,2?",               "start": "2013-08-27" },
+  { "id": "skool-luv-affair",         "name": "Skool Luv Affair",         "start": "2014-02-02" },
+  { "id": "dark-and-wild",            "name": "Dark & Wild",              "start": "2014-08-05" },
+  { "id": "hyyh-pt1",                 "name": "HYYH Pt. 1",              "start": "2015-04-17" },
+  { "id": "hyyh-pt2",                 "name": "HYYH Pt. 2",              "start": "2015-11-17" },
+  { "id": "hyyh-young-forever",       "name": "HYYH: Young Forever",     "start": "2016-04-19" },
+  { "id": "wings",                    "name": "Wings",                    "start": "2016-09-04" },
+  { "id": "you-never-walk-alone",     "name": "You Never Walk Alone",    "start": "2017-02-10" },
+  { "id": "lys-her",                  "name": "Love Yourself: Her",      "start": "2017-09-05" },
+  { "id": "lys-tear",                 "name": "Love Yourself: Tear",     "start": "2018-05-07" },
+  { "id": "lys-answer",               "name": "Love Yourself: Answer",   "start": "2018-08-09" },
+  { "id": "mots-persona",             "name": "Map of the Soul: Persona","start": "2019-03-27" },
+  { "id": "mots-7",                   "name": "Map of the Soul: 7",      "start": "2020-01-09" },
+  { "id": "be",                       "name": "BE",                      "start": "2020-10-20" },
+  { "id": "proof",                    "name": "Proof",                   "start": "2022-05-05" },
+  { "id": "military-hiatus",          "name": "Military / Hiatus",       "start": "2022-06-14" },
+  { "id": "arirang",                  "name": "Arirang",                 "start": "2026-03-13" }
+]
