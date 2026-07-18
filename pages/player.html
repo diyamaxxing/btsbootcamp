@@ -8,14 +8,53 @@
   <link rel="stylesheet" href="../css/player.css" />
 </head>
 <body>
-  <!-- nav -->
-  <!-- embedded YouTube player -->
-  <!-- up-next panel -->
-  <!-- video metadata: title, era, type, members -->
+  <nav>
+    <a href="../index.html">← BTS Bootcamp</a>
+  </nav>
 
-  <script src="../js/nav.js"></script>
-  <script src="../js/api.js"></script>
-  <script src="../js/player.js"></script>
-  <script src="../js/progress.js"></script>
+  <main id="app">
+    <p>Loading...</p>
+  </main>
+
+  <script>
+    function videoId(url) {
+      const m = url.match(/v=([a-zA-Z0-9_-]{11})/);
+      return m ? m[1] : null;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const recordId = params.get("id");
+
+    fetch("../data/videos.json")
+      .then(r => r.json())
+      .then(videos => {
+        const video = videos.find(v => v.id === recordId);
+        if (!video) {
+          document.getElementById("app").innerHTML = `<p>Video not found: ${recordId}</p>`;
+          return;
+        }
+
+        const ytId = videoId(video.url);
+        document.title = `${video.title} — BTS Bootcamp`;
+
+        document.getElementById("app").innerHTML = `
+          <div id="player-wrap">
+            <iframe
+              src="https://www.youtube.com/embed/${ytId}?autoplay=1"
+              allow="autoplay; encrypted-media"
+              allowfullscreen>
+            </iframe>
+          </div>
+          <div id="meta">
+            <h1>${video.title}</h1>
+            <p>${[video.type, video.era, video.air_date].filter(Boolean).join(" · ")}</p>
+            <p>${video.members ? video.members.join(", ") : ""}</p>
+            ${video.description ? `<p>${video.description}</p>` : ""}
+          </div>`;
+      })
+      .catch(err => {
+        document.getElementById("app").innerHTML = `<p>Error: ${err.message}</p>`;
+      });
+  </script>
 </body>
 </html>

@@ -8,13 +8,51 @@
   <link rel="stylesheet" href="css/home.css" />
 </head>
 <body>
-  <!-- nav -->
-  <!-- hero banner -->
-  <!-- carousels: Continue Watching, Bootcamp, By Era, Run BTS, Concerts -->
+  <nav>
+    <a href="index.html"><strong>BTS Bootcamp</strong></a>
+  </nav>
 
-  <script src="js/nav.js"></script>
-  <script src="js/api.js"></script>
-  <script src="js/auth.js"></script>
-  <script src="js/progress.js"></script>
+  <main id="app">
+    <p>Loading...</p>
+  </main>
+
+  <script>
+    const TYPES = ["MV", "Run BTS", "Bangtan Bomb", "Dance Practice"];
+
+    function videoId(url) {
+      const m = url.match(/v=([a-zA-Z0-9_-]{11})/);
+      return m ? m[1] : null;
+    }
+
+    function renderCarousel(type, videos) {
+      const filtered = videos.filter(v => v.type === type && v.status === "active").slice(0, 20);
+      if (!filtered.length) return "";
+
+      const cards = filtered.map(v => {
+        const id = videoId(v.url);
+        return `
+          <a class="card" href="pages/player.html?id=${encodeURIComponent(v.id)}">
+            <img src="${v.thumbnail}" alt="${v.title}" loading="lazy" />
+            <p>${v.title}</p>
+          </a>`;
+      }).join("");
+
+      return `
+        <section class="carousel">
+          <h2>${type}</h2>
+          <div class="rail">${cards}</div>
+        </section>`;
+    }
+
+    fetch("data/videos.json")
+      .then(r => r.json())
+      .then(videos => {
+        const html = TYPES.map(t => renderCarousel(t, videos)).join("");
+        document.getElementById("app").innerHTML = html;
+      })
+      .catch(err => {
+        document.getElementById("app").innerHTML = `<p>Error loading videos: ${err.message}</p>`;
+      });
+  </script>
 </body>
 </html>
