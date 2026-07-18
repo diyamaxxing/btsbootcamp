@@ -196,10 +196,14 @@
         document.getElementById("results").innerHTML = `<p class="empty">No videos match these filters.</p>`;
         return;
       }
+      const disclaimer = state.type === "Run BTS"
+        ? `<p class="disclaimer">Run BTS originally aired on V LIVE and is not sorted by era.</p>`
+        : "";
       document.getElementById("results").innerHTML = `
         <div id="results-header">
           <span>${filtered.length.toLocaleString()} videos</span>
         </div>
+        ${disclaimer}
         <div id="grid">${filtered.map(renderCard).join("")}</div>`;
     }
 
@@ -210,9 +214,13 @@
       const carousels = TYPES.map(type => {
         const videos = active.filter(v => v.type === type);
         if (!videos.length) return "";
+        const disclaimer = type === "Run BTS"
+          ? `<p class="disclaimer">Run BTS originally aired on V LIVE and is not sorted by era.</p>`
+          : "";
         return `
           <section class="carousel">
             <h2>${type} <span class="count">${videos.length}</span></h2>
+            ${disclaimer}
             <div class="rail">${videos.slice(0, 20).map(renderCard).join("")}</div>
           </section>`;
       }).join("");
