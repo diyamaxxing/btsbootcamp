@@ -24,18 +24,53 @@
       return m ? m[1] : null;
     }
 
+    function fmtHours(totalSec) {
+      const h = Math.floor(totalSec / 3600);
+      const m = Math.floor((totalSec % 3600) / 60);
+      return `${h.toLocaleString()}h ${m}m`;
+    }
+
+    function renderStats(videos) {
+      const active = videos.filter(v => v.status === "active");
+      const totalSec = active.reduce((sum, v) => sum + (v.duration_sec || 0), 0);
+      const eras = [...new Set(active.map(v => v.era).filter(Boolean))].length;
+      const earliest = active.filter(v => v.air_date).sort((a, b) => a.air_date.localeCompare(b.air_date))[0];
+      const typeCounts = TYPES.map(t => {
+        const count = active.filter(v => v.type === t).length;
+        return `<div class="stat"><span class="stat-num">${count.toLocaleString()}</span><span class="stat-label">${t}s</span></div>`;
+      }).join("");
+
+      return `
+        <section id="stats">
+          <div class="stat">
+            <span class="stat-num">${active.length.toLocaleString()}</span>
+            <span class="stat-label">Videos</span>
+          </div>
+          ${typeCounts}
+          <div class="stat">
+            <span class="stat-num">${fmtHours(totalSec)}</span>
+            <span class="stat-label">Total Runtime</span>
+          </div>
+          <div class="stat">
+            <span class="stat-num">${eras}</span>
+            <span class="stat-label">Eras</span>
+          </div>
+          <div class="stat">
+            <span class="stat-num">${earliest ? earliest.air_date.slice(0, 4) : '—'}</span>
+            <span class="stat-label">Since</span>
+          </div>
+        </section>`;
+    }
+
     function renderCarousel(type, videos) {
       const filtered = videos.filter(v => v.type === type && v.status === "active").slice(0, 20);
       if (!filtered.length) return "";
 
-      const cards = filtered.map(v => {
-        const id = videoId(v.url);
-        return `
-          <a class="card" href="pages/player.html?id=${encodeURIComponent(v.id)}">
-            <img src="${v.thumbnail}" alt="${v.title}" loading="lazy" />
-            <p>${v.title}</p>
-          </a>`;
-      }).join("");
+      const cards = filtered.map(v => `
+        <a class="card" href="pages/player.html?id=${encodeURIComponent(v.id)}">
+          <img src="${v.thumbnail}" alt="${v.title}" loading="lazy" />
+          <p>${v.title}</p>
+        </a>`).join("");
 
       return `
         <section class="carousel">
@@ -47,8 +82,9 @@
     fetch("data/videos.json")
       .then(r => r.json())
       .then(videos => {
-        const html = TYPES.map(t => renderCarousel(t, videos)).join("");
-        document.getElementById("app").innerHTML = html;
+        const stats = renderStats(videos);
+        const carousels = TYPES.map(t => renderCarousel(t, videos)).join("");
+        document.getElementById("app").innerHTML = stats + carousels;
       })
       .catch(err => {
         document.getElementById("app").innerHTML = `<p>Error loading videos: ${err.message}</p>`;

@@ -1,4 +1,36 @@
 /* home page: hero banner, carousels */
+
+/* stats bar */
+#stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 40px;
+  padding: 20px;
+  background: #111;
+  border: 1px solid #222;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 80px;
+}
+
+.stat-num {
+  font-size: 22px;
+  font-weight: 700;
+  color: #f0f0f0;
+}
+
+.stat-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #666;
+}
+
 .carousel { margin-bottom: 40px; }
 
 .carousel h2 {
