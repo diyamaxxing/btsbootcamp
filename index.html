@@ -12,83 +12,213 @@
     <a href="index.html"><strong>BTS Bootcamp</strong></a>
   </nav>
 
-  <main id="app">
-    <p>Loading...</p>
+  <main>
+    <div id="stats-bar"></div>
+
+    <div id="filters">
+      <div id="type-pills"></div>
+      <div id="dropdowns">
+        <select id="era-select"><option value="">All Eras</option></select>
+        <select id="year-select"><option value="">All Years</option></select>
+      </div>
+    </div>
+
+    <div id="active-filters"></div>
+    <div id="results"></div>
   </main>
 
   <script>
+    // ── state ────────────────────────────────────────────────────────────────
+    const state = { type: null, era: null, year: null };
+    let ALL_VIDEOS = [];
+    let ALL_ERAS   = [];
+
     const TYPES = ["MV", "Run BTS", "Bangtan Bomb", "Dance Practice"];
 
-    function videoId(url) {
-      const m = url.match(/v=([a-zA-Z0-9_-]{11})/);
-      return m ? m[1] : null;
-    }
-
-    function fmtHours(totalSec) {
-      const h = Math.floor(totalSec / 3600);
-      const m = Math.floor((totalSec % 3600) / 60);
+    // ── utils ────────────────────────────────────────────────────────────────
+    function fmtHours(sec) {
+      const h = Math.floor(sec / 3600);
+      const m = Math.floor((sec % 3600) / 60);
       return `${h.toLocaleString()}h ${m}m`;
     }
 
+    function applyFilters(videos) {
+      return videos.filter(v => {
+        if (v.status !== "active") return false;
+        if (state.type && v.type !== state.type) return false;
+        if (state.era  && v.era  !== state.era)  return false;
+        if (state.year && !(v.air_date || "").startsWith(state.year)) return false;
+        return true;
+      });
+    }
+
+    function isFiltered() {
+      return state.type || state.era || state.year;
+    }
+
+    // ── stats bar ────────────────────────────────────────────────────────────
     function renderStats(videos) {
-      const active = videos.filter(v => v.status === "active");
-      const totalSec = active.reduce((sum, v) => sum + (v.duration_sec || 0), 0);
-      const eras = [...new Set(active.map(v => v.era).filter(Boolean))].length;
-      const earliest = active.filter(v => v.air_date).sort((a, b) => a.air_date.localeCompare(b.air_date))[0];
+      const active   = videos.filter(v => v.status === "active");
+      const totalSec = active.reduce((s, v) => s + (v.duration_sec || 0), 0);
+      const eras     = new Set(active.map(v => v.era).filter(Boolean)).size;
+      const since    = active.filter(v => v.air_date).sort((a,b) => a.air_date.localeCompare(b.air_date))[0];
+
       const typeCounts = TYPES.map(t => {
-        const count = active.filter(v => v.type === t).length;
-        return `<div class="stat"><span class="stat-num">${count.toLocaleString()}</span><span class="stat-label">${t}s</span></div>`;
+        const n = active.filter(v => v.type === t).length;
+        return `<div class="stat"><span class="stat-num">${n.toLocaleString()}</span><span class="stat-label">${t}s</span></div>`;
       }).join("");
 
-      return `
+      document.getElementById("stats-bar").innerHTML = `
         <section id="stats">
-          <div class="stat">
-            <span class="stat-num">${active.length.toLocaleString()}</span>
-            <span class="stat-label">Videos</span>
-          </div>
+          <div class="stat"><span class="stat-num">${active.length.toLocaleString()}</span><span class="stat-label">Videos</span></div>
           ${typeCounts}
-          <div class="stat">
-            <span class="stat-num">${fmtHours(totalSec)}</span>
-            <span class="stat-label">Total Runtime</span>
-          </div>
-          <div class="stat">
-            <span class="stat-num">${eras}</span>
-            <span class="stat-label">Eras</span>
-          </div>
-          <div class="stat">
-            <span class="stat-num">${earliest ? earliest.air_date.slice(0, 4) : '—'}</span>
-            <span class="stat-label">Since</span>
-          </div>
+          <div class="stat"><span class="stat-num">${fmtHours(totalSec)}</span><span class="stat-label">Total Runtime</span></div>
+          <div class="stat"><span class="stat-num">${eras}</span><span class="stat-label">Eras</span></div>
+          <div class="stat"><span class="stat-num">${since ? since.air_date.slice(0,4) : "—"}</span><span class="stat-label">Since</span></div>
         </section>`;
     }
 
-    function renderCarousel(type, videos) {
-      const filtered = videos.filter(v => v.type === type && v.status === "active").slice(0, 20);
-      if (!filtered.length) return "";
+    // ── filter controls ──────────────────────────────────────────────────────
+    function renderFilters(videos, eras) {
+      // type pills
+      const pills = ["All", ...TYPES].map(t => {
+        const active = (t === "All" && !state.type) || t === state.type;
+        return `<button class="pill${active ? " active" : ""}" data-type="${t === "All" ? "" : t}">${t}</button>`;
+      }).join("");
+      document.getElementById("type-pills").innerHTML = pills;
 
-      const cards = filtered.map(v => `
+      // era dropdown
+      const eraSelect = document.getElementById("era-select");
+      const currentEra = eraSelect.value;
+      eraSelect.innerHTML = `<option value="">All Eras</option>` +
+        eras.map(e => `<option value="${e.name}"${e.name === currentEra ? " selected" : ""}>${e.name}</option>`).join("");
+
+      // year dropdown — derived from data
+      const years = [...new Set(
+        videos.filter(v => v.air_date).map(v => v.air_date.slice(0,4))
+      )].sort();
+      const yearSelect = document.getElementById("year-select");
+      const currentYear = yearSelect.value;
+      yearSelect.innerHTML = `<option value="">All Years</option>` +
+        years.map(y => `<option value="${y}"${y === currentYear ? " selected" : ""}>${y}</option>`).join("");
+
+      // pill click handlers
+      document.getElementById("type-pills").querySelectorAll(".pill").forEach(btn => {
+        btn.addEventListener("click", () => {
+          state.type = btn.dataset.type || null;
+          render();
+        });
+      });
+
+      eraSelect.addEventListener("change", () => { state.era  = eraSelect.value  || null; render(); });
+      yearSelect.addEventListener("change", () => { state.year = yearSelect.value || null; render(); });
+    }
+
+    // ── active filter tags ───────────────────────────────────────────────────
+    function renderActiveFilters() {
+      const tags = [];
+      if (state.type) tags.push(`<span class="tag">${state.type} <button data-clear="type">×</button></span>`);
+      if (state.era)  tags.push(`<span class="tag">${state.era} <button data-clear="era">×</button></span>`);
+      if (state.year) tags.push(`<span class="tag">${state.year} <button data-clear="year">×</button></span>`);
+
+      const el = document.getElementById("active-filters");
+      el.innerHTML = tags.length ? `<div id="tag-row">${tags.join("")}</div>` : "";
+
+      el.querySelectorAll("[data-clear]").forEach(btn => {
+        btn.addEventListener("click", () => { state[btn.dataset.clear] = null; render(); });
+      });
+    }
+
+    // ── results ──────────────────────────────────────────────────────────────
+    function renderCard(v) {
+      return `
         <a class="card" href="pages/player.html?id=${encodeURIComponent(v.id)}">
           <img src="${v.thumbnail}" alt="${v.title}" loading="lazy" />
           <p>${v.title}</p>
-        </a>`).join("");
+        </a>`;
+    }
 
-      return `
+    function renderFiltered(videos) {
+      const filtered = applyFilters(videos);
+      if (!filtered.length) {
+        document.getElementById("results").innerHTML = `<p class="empty">No videos match these filters.</p>`;
+        return;
+      }
+      document.getElementById("results").innerHTML = `
         <section class="carousel">
-          <h2>${type}</h2>
-          <div class="rail">${cards}</div>
+          <h2>${filtered.length.toLocaleString()} videos</h2>
+          <div class="rail">${filtered.map(renderCard).join("")}</div>
         </section>`;
     }
 
-    fetch("data/videos.json")
-      .then(r => r.json())
-      .then(videos => {
-        const stats = renderStats(videos);
-        const carousels = TYPES.map(t => renderCarousel(t, videos)).join("");
-        document.getElementById("app").innerHTML = stats + carousels;
-      })
-      .catch(err => {
-        document.getElementById("app").innerHTML = `<p>Error loading videos: ${err.message}</p>`;
-      });
+    function renderByType(videos) {
+      document.getElementById("results").innerHTML =
+        TYPES.map(type => {
+          const filtered = videos.filter(v => v.type === type && v.status === "active");
+          if (!filtered.length) return "";
+          return `
+            <section class="carousel">
+              <h2>${type} <span class="count">${filtered.length}</span></h2>
+              <div class="rail">${filtered.slice(0, 20).map(renderCard).join("")}</div>
+            </section>`;
+        }).join("") +
+        renderEraGrid();
+    }
+
+    function renderEraGrid() {
+      if (!ALL_ERAS.length) return "";
+      const active = ALL_VIDEOS.filter(v => v.status === "active");
+
+      const cards = ALL_ERAS.map(era => {
+        const count = active.filter(v => v.era === era.name).length;
+        if (!count) return "";
+        return `
+          <button class="era-card" data-era="${era.name}">
+            <span class="era-name">${era.name}</span>
+            <span class="era-count">${count} videos</span>
+            <span class="era-year">${era.start.slice(0,4)}</span>
+          </button>`;
+      }).join("");
+
+      return `
+        <section id="era-section">
+          <h2>Browse by Era</h2>
+          <div id="era-grid">${cards}</div>
+        </section>`;
+    }
+
+    // ── main render ──────────────────────────────────────────────────────────
+    function render() {
+      renderFilters(ALL_VIDEOS, ALL_ERAS);
+      renderActiveFilters();
+
+      // sync dropdowns to state
+      document.getElementById("era-select").value  = state.era  || "";
+      document.getElementById("year-select").value = state.year || "";
+
+      if (isFiltered()) {
+        renderFiltered(ALL_VIDEOS);
+      } else {
+        renderByType(ALL_VIDEOS);
+        // wire era card clicks after render
+        document.querySelectorAll(".era-card").forEach(btn => {
+          btn.addEventListener("click", () => { state.era = btn.dataset.era; render(); });
+        });
+      }
+    }
+
+    // ── boot ─────────────────────────────────────────────────────────────────
+    Promise.all([
+      fetch("data/videos.json").then(r => r.json()),
+      fetch("data/eras.json").then(r => r.json()),
+    ]).then(([videos, eras]) => {
+      ALL_VIDEOS = videos;
+      ALL_ERAS   = eras;
+      renderStats(videos);
+      render();
+    }).catch(err => {
+      document.getElementById("results").innerHTML = `<p>Error: ${err.message}</p>`;
+    });
   </script>
 </body>
 </html>
