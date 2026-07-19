@@ -17,13 +17,63 @@
   </main>
 
   <script>
-    function videoId(url) {
+    function ytId(url) {
       const m = url.match(/v=([a-zA-Z0-9_-]{11})/);
       return m ? m[1] : null;
     }
 
-    const params = new URLSearchParams(window.location.search);
-    const recordId = params.get("id");
+    function fmtViews(n) {
+      if (!n) return "";
+      if (n >= 1e9) return (n / 1e9).toFixed(1) + "B views";
+      if (n >= 1e6) return (n / 1e6).toFixed(1) + "M views";
+      if (n >= 1e3) return (n / 1e3).toFixed(1) + "K views";
+      return n + " views";
+    }
+
+    function scoreVideo(v) {
+      return Math.log10((v.view_count || 0) + 1) * 0.7 +
+             Math.log10((v.like_count || 0) + 1) * 0.3;
+    }
+
+    function typeMatch(a, b) {
+      return a.type === b.type ||
+             (a.tags || []).includes(b.type) ||
+             (b.tags || []).includes(a.type);
+    }
+
+    // heuristic: same era + same type → 4, same era → 2, same type → 2, tiebreak by score
+    function upNext(current, all, n = 20) {
+      const active = all.filter(v => v.status === "active" && v.id !== current.id);
+      const max = Math.max(...active.map(scoreVideo)) || 1;
+      return active
+        .map(v => {
+          let r = 0;
+          if (v.era && v.era === current.era)  r += 2;
+          if (typeMatch(v, current))            r += 2;
+          r += scoreVideo(v) / max;
+          return { v, r };
+        })
+        .sort((a, b) => b.r - a.r)
+        .slice(0, n)
+        .map(x => x.v);
+    }
+
+    function renderUpNextCard(v) {
+      const id = ytId(v.url);
+      const meta = [v.era, v.type].filter(Boolean).join(" · ");
+      return `
+        <a class="upnext-card" href="player.html?id=${encodeURIComponent(v.id)}">
+          <img src="https://img.youtube.com/vi/${id}/mqdefault.jpg" alt="${v.title}" />
+          <div class="upnext-info">
+            <p class="upnext-title">${v.title}</p>
+            <p class="upnext-meta">${meta}</p>
+            ${v.view_count ? `<p class="upnext-views">${fmtViews(v.view_count)}</p>` : ""}
+          </div>
+        </a>`;
+    }
+
+    // ── boot ─────────────────────────────────────────────────────────────────
+    const recordId = new URLSearchParams(window.location.search).get("id");
 
     fetch("../data/videos.json")
       .then(r => r.json())
@@ -34,23 +84,50 @@
           return;
         }
 
-        const ytId = videoId(video.url);
+        const id = ytId(video.url);
         document.title = `${video.title} — BTS Bootcamp`;
 
+        const related = upNext(video, videos);
+        const metaLine = [video.type, video.era, video.air_date].filter(Boolean).join(" · ");
+
         document.getElementById("app").innerHTML = `
-          <div id="player-wrap">
-            <iframe
-              src="https://www.youtube.com/embed/${ytId}?autoplay=1"
-              allow="autoplay; encrypted-media"
-              allowfullscreen>
-            </iframe>
+          <div id="player-layout">
+
+            <div id="player-col">
+              <div id="player-wrap">
+                <iframe
+                  src="https://www.youtube.com/embed/${id}?autoplay=1"
+                  allow="autoplay; encrypted-media"
+                  allowfullscreen>
+                </iframe>
+              </div>
+              <div id="meta">
+                <h1>${video.title}</h1>
+                <p class="meta-line">${metaLine}</p>
+                ${video.members?.length ? `<p class="meta-members">${video.members.join(", ")}</p>` : ""}
+                ${video.view_count ? `<p class="meta-stats">${fmtViews(video.view_count)} · ${(video.like_count || 0).toLocaleString()} likes</p>` : ""}
+                ${video.description ? `<p class="meta-desc">${video.description}</p>` : ""}
+              </div>
+            </div>
+
+            <aside id="upnext-col">
+              <h2 class="sidebar-heading">Up Next</h2>
+              <div id="upnext-list">
+                ${related.map(renderUpNextCard).join("")}
+              </div>
+            </aside>
+
           </div>
-          <div id="meta">
-            <h1>${video.title}</h1>
-            <p>${[video.type, video.era, video.air_date].filter(Boolean).join(" · ")}</p>
-            <p>${video.members ? video.members.join(", ") : ""}</p>
-            ${video.description ? `<p>${video.description}</p>` : ""}
-          </div>`;
+
+          <section id="comments">
+            <h2 class="sidebar-heading">Comments</h2>
+            <div id="comment-input-wrap">
+              <input id="comment-input" type="text" placeholder="Comments coming soon…" disabled />
+            </div>
+            <div id="comment-list">
+              <p class="comments-empty">Be the first to comment.</p>
+            </div>
+          </section>`;
       })
       .catch(err => {
         document.getElementById("app").innerHTML = `<p>Error: ${err.message}</p>`;
