@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Watch — BTS Bootcamp</title>
   <link rel="stylesheet" href="../css/main.css" />
+  <link rel="stylesheet" href="../css/home.css" />
   <link rel="stylesheet" href="../css/player.css" />
 </head>
 <body>
@@ -24,10 +25,10 @@
 
     function fmtViews(n) {
       if (!n) return "";
-      if (n >= 1e9) return (n / 1e9).toFixed(1) + "B views";
-      if (n >= 1e6) return (n / 1e6).toFixed(1) + "M views";
-      if (n >= 1e3) return (n / 1e3).toFixed(1) + "K views";
-      return n + " views";
+      if (n >= 1e9) return (n / 1e9).toFixed(1) + "B";
+      if (n >= 1e6) return (n / 1e6).toFixed(1) + "M";
+      if (n >= 1e3) return (n / 1e3).toFixed(1) + "K";
+      return n.toString();
     }
 
     function scoreVideo(v) {
@@ -41,35 +42,55 @@
              (b.tags || []).includes(a.type);
     }
 
-    // heuristic: same era + same type → 4, same era → 2, same type → 2, tiebreak by score
-    function upNext(current, all, n = 20) {
+    // ── related pools ────────────────────────────────────────────────────────
+    function buildPools(current, all) {
       const active = all.filter(v => v.status === "active" && v.id !== current.id);
-      const max = Math.max(...active.map(scoreVideo)) || 1;
-      return active
-        .map(v => {
-          let r = 0;
-          if (v.era && v.era === current.era)  r += 2;
-          if (typeMatch(v, current))            r += 2;
-          r += scoreVideo(v) / max;
-          return { v, r };
-        })
-        .sort((a, b) => b.r - a.r)
-        .slice(0, n)
-        .map(x => x.v);
+      const seen   = new Set();
+
+      // Up Next: same era + same type, scored
+      const upNext = active
+        .filter(v => v.era === current.era && typeMatch(v, current))
+        .sort((a, b) => scoreVideo(b) - scoreVideo(a))
+        .slice(0, 15);
+      upNext.forEach(v => seen.add(v.id));
+
+      // More from Era: same era, any type, not already shown
+      const moreEra = current.era
+        ? active
+            .filter(v => v.era === current.era && !seen.has(v.id))
+            .sort((a, b) => scoreVideo(b) - scoreVideo(a))
+            .slice(0, 15)
+        : [];
+      moreEra.forEach(v => seen.add(v.id));
+
+      // More [Type]: same type/tags, any era, not already shown
+      const moreType = active
+        .filter(v => typeMatch(v, current) && !seen.has(v.id))
+        .sort((a, b) => scoreVideo(b) - scoreVideo(a))
+        .slice(0, 15);
+
+      return { upNext, moreEra, moreType };
     }
 
-    function renderUpNextCard(v) {
-      const id = ytId(v.url);
-      const meta = [v.era, v.type].filter(Boolean).join(" · ");
+    // ── rendering ────────────────────────────────────────────────────────────
+    function renderCard(v) {
+      const id   = ytId(v.url);
+      const meta = [v.era, fmtViews(v.view_count) ? fmtViews(v.view_count) + " views" : ""].filter(Boolean).join(" · ");
       return `
-        <a class="upnext-card" href="player.html?id=${encodeURIComponent(v.id)}">
-          <img src="https://img.youtube.com/vi/${id}/mqdefault.jpg" alt="${v.title}" />
-          <div class="upnext-info">
-            <p class="upnext-title">${v.title}</p>
-            <p class="upnext-meta">${meta}</p>
-            ${v.view_count ? `<p class="upnext-views">${fmtViews(v.view_count)}</p>` : ""}
-          </div>
+        <a class="card" href="player.html?id=${encodeURIComponent(v.id)}">
+          <img src="https://img.youtube.com/vi/${id}/mqdefault.jpg" alt="${v.title}" loading="lazy" />
+          <p class="card-title">${v.title}</p>
+          ${meta ? `<p class="card-meta">${meta}</p>` : ""}
         </a>`;
+    }
+
+    function renderCarousel(title, videos) {
+      if (!videos.length) return "";
+      return `
+        <div class="carousel">
+          <h2>${title}</h2>
+          <div class="rail">${videos.map(renderCard).join("")}</div>
+        </div>`;
     }
 
     // ── boot ─────────────────────────────────────────────────────────────────
@@ -87,7 +108,7 @@
         const id = ytId(video.url);
         document.title = `${video.title} — BTS Bootcamp`;
 
-        const related = upNext(video, videos);
+        const { upNext, moreEra, moreType } = buildPools(video, videos);
         const metaLine = [video.type, video.era, video.air_date].filter(Boolean).join(" · ");
 
         document.getElementById("app").innerHTML = `
@@ -105,29 +126,27 @@
                 <h1>${video.title}</h1>
                 <p class="meta-line">${metaLine}</p>
                 ${video.members?.length ? `<p class="meta-members">${video.members.join(", ")}</p>` : ""}
-                ${video.view_count ? `<p class="meta-stats">${fmtViews(video.view_count)} · ${(video.like_count || 0).toLocaleString()} likes</p>` : ""}
+                ${video.view_count ? `<p class="meta-stats">${fmtViews(video.view_count)}M views · ${(video.like_count || 0).toLocaleString()} likes</p>` : ""}
                 ${video.description ? `<p class="meta-desc">${video.description}</p>` : ""}
+              </div>
+              <div id="related">
+                ${renderCarousel("Up Next", upNext)}
+                ${moreEra.length  ? renderCarousel(`More from ${video.era}`, moreEra)   : ""}
+                ${moreType.length ? renderCarousel(`More ${video.type}`,     moreType)  : ""}
               </div>
             </div>
 
-            <aside id="upnext-col">
-              <h2 class="sidebar-heading">Up Next</h2>
-              <div id="upnext-list">
-                ${related.map(renderUpNextCard).join("")}
+            <aside id="comments-col">
+              <h2 class="sidebar-heading">Comments</h2>
+              <div id="comment-input-wrap">
+                <input id="comment-input" type="text" placeholder="Comments coming soon…" disabled />
+              </div>
+              <div id="comment-list">
+                <p class="comments-empty">Be the first to comment.</p>
               </div>
             </aside>
 
-          </div>
-
-          <section id="comments">
-            <h2 class="sidebar-heading">Comments</h2>
-            <div id="comment-input-wrap">
-              <input id="comment-input" type="text" placeholder="Comments coming soon…" disabled />
-            </div>
-            <div id="comment-list">
-              <p class="comments-empty">Be the first to comment.</p>
-            </div>
-          </section>`;
+          </div>`;
       })
       .catch(err => {
         document.getElementById("app").innerHTML = `<p>Error: ${err.message}</p>`;
