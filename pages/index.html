@@ -102,7 +102,7 @@
 
       return ALL_VIDEOS.filter(v => {
         if (v.status !== "active") return false;
-        if (state.types.size && !state.types.has(v.type)) return false;
+        if (state.types.size && !state.types.has(v.type) && !(v.tags || []).some(t => state.types.has(t))) return false;
 
         if (state.eraFrom || state.eraTo) {
           const idx = eraIndex(v.era);

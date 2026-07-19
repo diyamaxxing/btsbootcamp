@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>BTS Bootcamp</title>
+  <title>Main Muster</title>
   <link rel="stylesheet" href="css/main.css" />
   <link rel="stylesheet" href="css/home.css" />
 </head>
@@ -165,7 +165,8 @@
       const mostLoved = [...active].sort((a, b) => (b.like_count || 0) - (a.like_count || 0)).slice(0, 20);
 
       const typeCarousels = ALL_TYPES.map(type => {
-        const videos = [...active.filter(v => v.type === type)]
+        const inType = v => v.type === type || (v.tags || []).includes(type);
+        const videos = [...active.filter(inType)]
           .sort((a, b) => scoreVideo(b) - scoreVideo(a))
           .slice(0, 20);
         const disclaimer = type === "Run BTS"
