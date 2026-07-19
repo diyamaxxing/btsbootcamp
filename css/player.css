@@ -1,18 +1,15 @@
 /* player page */
 
-/* ── two-column layout ─────────────────────────────────────────────────── */
-#player-layout {
+/* ── top section: video + comments, same height ────────────────────────── */
+#top-section {
   display: grid;
   grid-template-columns: 1fr 320px;
   gap: 28px;
-  align-items: start;
+  margin-bottom: 20px;
 }
 
-/* ── video ─────────────────────────────────────────────────────────────── */
-#player-col { min-width: 0; }
-
 #player-wrap {
-  width: 100%;
+  min-width: 0;
   aspect-ratio: 16 / 9;
 }
 
@@ -23,34 +20,15 @@
   display: block;
 }
 
-/* ── meta ──────────────────────────────────────────────────────────────── */
-#meta {
-  margin-top: 16px;
-  margin-bottom: 32px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-#meta h1       { font-size: 17px; line-height: 1.4; }
-.meta-line     { font-size: 13px; color: #888; }
-.meta-members  { font-size: 12px; color: #666; }
-.meta-stats    { font-size: 12px; color: #555; }
-.meta-desc     { font-size: 13px; color: #777; line-height: 1.5; margin-top: 4px; }
-
-/* ── related carousels ─────────────────────────────────────────────────── */
-/* reuses .carousel / .rail / .card from home.css */
-#related .carousel { margin-bottom: 32px; }
-
-/* ── comments sidebar ──────────────────────────────────────────────────── */
+/* ── comments sidebar — same height as player via grid stretch ─────────── */
 #comments-col {
-  position: sticky;
-  top: 16px;
-  max-height: calc(100vh - 60px);
+  min-width: 0;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 12px;
+  border: 1px solid #1a1a1a;
+  padding: 16px;
 }
 
 #comments-col::-webkit-scrollbar { width: 3px; }
@@ -81,15 +59,31 @@
   padding: 8px 0;
 }
 
+/* ── meta — full width below top section ───────────────────────────────── */
+#meta {
+  margin-bottom: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 860px;
+}
+
+#meta h1      { font-size: 17px; line-height: 1.4; }
+.meta-line    { font-size: 13px; color: #888; }
+.meta-members { font-size: 12px; color: #666; }
+.meta-stats   { font-size: 12px; color: #555; }
+.meta-desc    { font-size: 13px; color: #777; line-height: 1.5; margin-top: 4px; }
+
+/* ── recommendation river — reuses .carousel/.rail/.card from home.css ── */
+#recommendations .carousel { margin-bottom: 40px; }
+
 /* ── mobile ────────────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
-  #player-layout {
+  #top-section {
     grid-template-columns: 1fr;
   }
 
   #comments-col {
-    position: static;
-    max-height: none;
-    overflow-y: visible;
+    max-height: 300px;
   }
 }

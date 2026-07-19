@@ -42,37 +42,66 @@
              (b.tags || []).includes(a.type);
     }
 
-    // ── related pools ────────────────────────────────────────────────────────
-    function buildPools(current, all) {
+    // ── recommendation river ─────────────────────────────────────────────────
+    // Each pool pulls from what hasn't been shown yet, relevance degrades as you go.
+    function buildRecommendations(current, all, eras) {
       const active = all.filter(v => v.status === "active" && v.id !== current.id);
-      const seen   = new Set();
+      const shown  = new Set();
 
-      // Up Next: same era + same type, scored
-      const upNext = active
-        .filter(v => v.era === current.era && typeMatch(v, current))
-        .sort((a, b) => scoreVideo(b) - scoreVideo(a))
-        .slice(0, 15);
-      upNext.forEach(v => seen.add(v.id));
+      function pool(filter, sort, n) {
+        const results = active.filter(v => !shown.has(v.id) && filter(v))
+          .sort(sort)
+          .slice(0, n);
+        results.forEach(v => shown.add(v.id));
+        return results;
+      }
 
-      // More from Era: same era, any type, not already shown
-      const moreEra = current.era
-        ? active
-            .filter(v => v.era === current.era && !seen.has(v.id))
-            .sort((a, b) => scoreVideo(b) - scoreVideo(a))
-            .slice(0, 15)
-        : [];
-      moreEra.forEach(v => seen.add(v.id));
+      const byScore  = (a, b) => scoreVideo(b) - scoreVideo(a);
+      const byLikes  = (a, b) => (b.like_count || 0) - (a.like_count || 0);
+      const eraIdx   = name => eras.findIndex(e => e.name === name);
+      const curIdx   = eraIdx(current.era);
 
-      // More [Type]: same type/tags, any era, not already shown
-      const moreType = active
-        .filter(v => typeMatch(v, current) && !seen.has(v.id))
-        .sort((a, b) => scoreVideo(b) - scoreVideo(a))
-        .slice(0, 15);
+      const carousels = [];
 
-      return { upNext, moreEra, moreType };
+      // 1. tightest — same era + same type
+      const upNext = pool(v => v.era === current.era && typeMatch(v, current), byScore, 15);
+      if (upNext.length) carousels.push({ title: "Up Next", videos: upNext });
+
+      // 2. same era, any type
+      if (current.era) {
+        const moreEra = pool(v => v.era === current.era, byScore, 15);
+        if (moreEra.length) carousels.push({ title: `More from ${current.era}`, videos: moreEra });
+      }
+
+      // 3. same type, any era
+      const moreType = pool(v => typeMatch(v, current), byScore, 15);
+      if (moreType.length) carousels.push({ title: `More ${current.type}`, videos: moreType });
+
+      // 4. fan favorites — same type sorted by likes
+      const loved = pool(v => typeMatch(v, current), byLikes, 15);
+      if (loved.length) carousels.push({ title: `Fan Favorites: ${current.type}`, videos: loved });
+
+      // 5. nearby eras (±1–2 steps in the era list)
+      if (curIdx !== -1) {
+        const nearbyEraNames = eras
+          .filter((_, i) => i !== curIdx && Math.abs(i - curIdx) <= 2)
+          .map(e => e.name);
+        const nearby = pool(v => nearbyEraNames.includes(v.era), byScore, 15);
+        if (nearby.length) carousels.push({ title: "From Nearby Eras", videos: nearby });
+      }
+
+      // 6. most loved overall
+      const mostLoved = pool(() => true, byLikes, 15);
+      if (mostLoved.length) carousels.push({ title: "Most Loved", videos: mostLoved });
+
+      // 7. trending overall — whatever's left
+      const trending = pool(() => true, byScore, 15);
+      if (trending.length) carousels.push({ title: "Trending", videos: trending });
+
+      return carousels;
     }
 
-    // ── rendering ────────────────────────────────────────────────────────────
+    // ── card + carousel ──────────────────────────────────────────────────────
     function renderCard(v) {
       const id   = ytId(v.url);
       const meta = [v.era, fmtViews(v.view_count) ? fmtViews(v.view_count) + " views" : ""].filter(Boolean).join(" · ");
@@ -85,10 +114,9 @@
     }
 
     function renderCarousel(title, videos) {
-      if (!videos.length) return "";
       return `
         <div class="carousel">
-          <h2>${title}</h2>
+          <h2>${title} <span class="count">${videos.length}</span></h2>
           <div class="rail">${videos.map(renderCard).join("")}</div>
         </div>`;
     }
@@ -96,61 +124,56 @@
     // ── boot ─────────────────────────────────────────────────────────────────
     const recordId = new URLSearchParams(window.location.search).get("id");
 
-    fetch("../data/videos.json")
-      .then(r => r.json())
-      .then(videos => {
-        const video = videos.find(v => v.id === recordId);
-        if (!video) {
-          document.getElementById("app").innerHTML = `<p>Video not found: ${recordId}</p>`;
-          return;
-        }
+    Promise.all([
+      fetch("../data/videos.json").then(r => r.json()),
+      fetch("../data/eras.json").then(r => r.json()),
+    ]).then(([videos, eras]) => {
+      const video = videos.find(v => v.id === recordId);
+      if (!video) {
+        document.getElementById("app").innerHTML = `<p>Video not found: ${recordId}</p>`;
+        return;
+      }
 
-        const id = ytId(video.url);
-        document.title = `${video.title} — BTS Bootcamp`;
+      const id = ytId(video.url);
+      document.title = `${video.title} — BTS Bootcamp`;
 
-        const { upNext, moreEra, moreType } = buildPools(video, videos);
-        const metaLine = [video.type, video.era, video.air_date].filter(Boolean).join(" · ");
+      const recs     = buildRecommendations(video, videos, eras);
+      const metaLine = [video.type, video.era, video.air_date].filter(Boolean).join(" · ");
 
-        document.getElementById("app").innerHTML = `
-          <div id="player-layout">
-
-            <div id="player-col">
-              <div id="player-wrap">
-                <iframe
-                  src="https://www.youtube.com/embed/${id}?autoplay=1"
-                  allow="autoplay; encrypted-media"
-                  allowfullscreen>
-                </iframe>
-              </div>
-              <div id="meta">
-                <h1>${video.title}</h1>
-                <p class="meta-line">${metaLine}</p>
-                ${video.members?.length ? `<p class="meta-members">${video.members.join(", ")}</p>` : ""}
-                ${video.view_count ? `<p class="meta-stats">${fmtViews(video.view_count)}M views · ${(video.like_count || 0).toLocaleString()} likes</p>` : ""}
-                ${video.description ? `<p class="meta-desc">${video.description}</p>` : ""}
-              </div>
-              <div id="related">
-                ${renderCarousel("Up Next", upNext)}
-                ${moreEra.length  ? renderCarousel(`More from ${video.era}`, moreEra)   : ""}
-                ${moreType.length ? renderCarousel(`More ${video.type}`,     moreType)  : ""}
-              </div>
+      document.getElementById("app").innerHTML = `
+        <div id="top-section">
+          <div id="player-wrap">
+            <iframe
+              src="https://www.youtube.com/embed/${id}?autoplay=1"
+              allow="autoplay; encrypted-media"
+              allowfullscreen>
+            </iframe>
+          </div>
+          <aside id="comments-col">
+            <h2 class="sidebar-heading">Comments</h2>
+            <div id="comment-input-wrap">
+              <input id="comment-input" type="text" placeholder="Comments coming soon…" disabled />
             </div>
+            <div id="comment-list">
+              <p class="comments-empty">Be the first to comment.</p>
+            </div>
+          </aside>
+        </div>
 
-            <aside id="comments-col">
-              <h2 class="sidebar-heading">Comments</h2>
-              <div id="comment-input-wrap">
-                <input id="comment-input" type="text" placeholder="Comments coming soon…" disabled />
-              </div>
-              <div id="comment-list">
-                <p class="comments-empty">Be the first to comment.</p>
-              </div>
-            </aside>
+        <div id="meta">
+          <h1>${video.title}</h1>
+          <p class="meta-line">${metaLine}</p>
+          ${video.members?.length ? `<p class="meta-members">${video.members.join(", ")}</p>` : ""}
+          ${video.view_count ? `<p class="meta-stats">${fmtViews(video.view_count)} views · ${(video.like_count || 0).toLocaleString()} likes</p>` : ""}
+          ${video.description ? `<p class="meta-desc">${video.description}</p>` : ""}
+        </div>
 
-          </div>`;
-      })
-      .catch(err => {
-        document.getElementById("app").innerHTML = `<p>Error: ${err.message}</p>`;
-      });
+        <div id="recommendations">
+          ${recs.map(r => renderCarousel(r.title, r.videos)).join("")}
+        </div>`;
+    }).catch(err => {
+      document.getElementById("app").innerHTML = `<p>Error: ${err.message}</p>`;
+    });
   </script>
 </body>
 </html>
