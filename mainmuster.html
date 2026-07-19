@@ -10,11 +10,12 @@
 <body>
   <nav>
     <a href="mainmuster.html"><strong>BTS Bootcamp</strong></a>
-    <a href="index.html">Browse →</a>
+    <a href="pages/index.html">Browse →</a>
   </nav>
 
   <main>
     <div id="stats-bar"></div>
+    <div id="era-carousel"></div>
     <div id="content"><p>Loading...</p></div>
   </main>
 
@@ -84,6 +85,20 @@
         </section>`;
     }
 
+    // ── era carousel — navigates to browse page with era pre-set ─────────────
+    function renderEraCarousel() {
+      const active = ALL_VIDEOS.filter(v => v.status === "active");
+      const pills  = ALL_ERAS.map(era => {
+        const count = active.filter(v => v.era === era.name).length;
+        if (!count) return "";
+        return `<a class="era-pill" href="pages/index.html?eraFrom=${encodeURIComponent(era.name)}&eraTo=${encodeURIComponent(era.name)}">
+          ${era.name}
+          <span class="era-pill-count">${count}</span>
+        </a>`;
+      }).join("");
+      document.getElementById("era-carousel").innerHTML = `<div id="era-rail">${pills}</div>`;
+    }
+
     // ── cards ────────────────────────────────────────────────────────────────
     function renderCard(v) {
       const meta = [v.era, fmtViews(v.view_count) ? fmtViews(v.view_count) + " views" : ""].filter(Boolean).join(" · ");
@@ -123,13 +138,13 @@
         </section>`;
     }
 
-    // ── era grid — links to index.html with filter pre-set ───────────────────
+    // ── era grid — links to browse page with filter pre-set ──────────────────
     function renderEraGrid(active) {
       const cards = ALL_ERAS.map(era => {
         const count = active.filter(v => v.era === era.name).length;
         if (!count) return "";
         return `
-          <a class="era-card" href="index.html?eraFrom=${encodeURIComponent(era.name)}&eraTo=${encodeURIComponent(era.name)}">
+          <a class="era-card" href="pages/index.html?eraFrom=${encodeURIComponent(era.name)}&eraTo=${encodeURIComponent(era.name)}">
             <span class="era-name">${era.name}</span>
             <span class="era-count">${count} videos</span>
             <span class="era-year">${era.start.slice(0, 4)}</span>
@@ -138,7 +153,7 @@
 
       return `
         <section id="era-section">
-          <h2>Browse by Era <a class="section-link" href="index.html">Browse all →</a></h2>
+          <h2>Browse by Era <a class="section-link" href="pages/index.html">Browse all →</a></h2>
           <div id="era-grid">${cards}</div>
         </section>`;
     }
@@ -176,6 +191,7 @@
       ALL_ERAS   = eras;
       ALL_TYPES  = [...new Set(videos.map(v => v.type))].sort();
       renderStats();
+      renderEraCarousel();
       render();
     }).catch(err => {
       document.getElementById("content").innerHTML = `<p>Error: ${err.message}</p>`;

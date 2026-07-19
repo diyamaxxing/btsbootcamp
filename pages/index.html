@@ -4,13 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Browse — BTS Bootcamp</title>
-  <link rel="stylesheet" href="css/main.css" />
-  <link rel="stylesheet" href="css/home.css" />
+  <link rel="stylesheet" href="../css/main.css" />
+  <link rel="stylesheet" href="../css/home.css" />
 </head>
 <body>
   <nav>
-    <a href="mainmuster.html">← Home</a>
-    <a href="mainmuster.html"><strong>BTS Bootcamp</strong></a>
+    <a href="../mainmuster.html">← Home</a>
+    <a href="../mainmuster.html"><strong>BTS Bootcamp</strong></a>
   </nav>
 
   <main>
@@ -202,7 +202,7 @@
     function renderCard(v) {
       const meta = [v.era, fmtViews(v.view_count) ? fmtViews(v.view_count) + " views" : ""].filter(Boolean).join(" · ");
       return `
-        <a class="card" href="pages/player.html?id=${encodeURIComponent(v.id)}">
+        <a class="card" href="player.html?id=${encodeURIComponent(v.id)}">
           <img src="${v.thumbnail}" alt="${v.title}" loading="lazy" />
           <p class="card-title">${v.title}</p>
           ${meta ? `<p class="card-meta">${meta}</p>` : ""}
@@ -276,8 +276,8 @@
     });
 
     Promise.all([
-      fetch("data/videos.json").then(r => r.json()),
-      fetch("data/eras.json").then(r => r.json()),
+      fetch("../data/videos.json").then(r => r.json()),
+      fetch("../data/eras.json").then(r => r.json()),
     ]).then(([videos, eras]) => {
       ALL_VIDEOS = videos;
       ALL_ERAS   = eras;
