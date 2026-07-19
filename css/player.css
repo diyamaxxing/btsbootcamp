@@ -9,6 +9,8 @@
 }
 
 /* ── video ─────────────────────────────────────────────────────────────── */
+#player-col { min-width: 0; }
+
 #player-wrap {
   width: 100%;
   aspect-ratio: 16 / 9;
