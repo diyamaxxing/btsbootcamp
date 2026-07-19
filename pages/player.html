@@ -77,11 +77,24 @@
       const moreType = pool(v => typeMatch(v, current), byScore, 15);
       if (moreType.length) carousels.push({ title: `More ${current.type}`, videos: moreType });
 
-      // 4. fan favorites — same type sorted by likes
+      // 4. same members (only meaningful when video has a subset of the group)
+      const currentMembers = current.members || [];
+      if (currentMembers.length > 0 && currentMembers.length < 7) {
+        const withMembers = pool(
+          v => currentMembers.some(m => (v.members || []).includes(m)),
+          byScore, 15
+        );
+        const label = currentMembers.length === 1
+          ? `More with ${currentMembers[0]}`
+          : `More with ${currentMembers.slice(0, -1).join(", ")} & ${currentMembers.at(-1)}`;
+        if (withMembers.length) carousels.push({ title: label, videos: withMembers });
+      }
+
+      // 6. fan favorites — same type sorted by likes
       const loved = pool(v => typeMatch(v, current), byLikes, 15);
       if (loved.length) carousels.push({ title: `Fan Favorites: ${current.type}`, videos: loved });
 
-      // 5. nearby eras (±1–2 steps in the era list)
+      // 7. nearby eras (±1–2 steps in the era list)
       if (curIdx !== -1) {
         const nearbyEraNames = eras
           .filter((_, i) => i !== curIdx && Math.abs(i - curIdx) <= 2)
@@ -90,11 +103,11 @@
         if (nearby.length) carousels.push({ title: "From Nearby Eras", videos: nearby });
       }
 
-      // 6. most loved overall
+      // 8. most loved overall
       const mostLoved = pool(() => true, byLikes, 15);
       if (mostLoved.length) carousels.push({ title: "Most Loved", videos: mostLoved });
 
-      // 7. trending overall — whatever's left
+      // 9. trending overall — whatever's left
       const trending = pool(() => true, byScore, 15);
       if (trending.length) carousels.push({ title: "Trending", videos: trending });
 
