@@ -15,6 +15,47 @@
 .stat-num   { font-size: 22px; font-weight: 700; color: #f0f0f0; }
 .stat-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: #666; }
 
+/* ── era carousel (browse page) ────────────────────────────────────────── */
+#era-rail {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  margin-bottom: 20px;
+}
+
+#era-rail::-webkit-scrollbar { height: 3px; }
+#era-rail::-webkit-scrollbar-thumb { background: #333; }
+
+.era-pill {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border: 1px solid #2a2a2a;
+  background: #111;
+  color: #aaa;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.era-pill:hover { border-color: #555; color: #f0f0f0; }
+
+.era-pill.active {
+  border-color: #f0f0f0;
+  color: #f0f0f0;
+  background: #1a1a1a;
+}
+
+.era-pill-count {
+  font-size: 10px;
+  color: #555;
+}
+
+.era-pill.active .era-pill-count { color: #888; }
+
 /* ── filters ───────────────────────────────────────────────────────────── */
 #filters {
   display: flex;

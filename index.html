@@ -14,6 +14,8 @@
   </nav>
 
   <main>
+    <div id="era-carousel"></div>
+
     <div id="filters">
       <div id="type-dropdown-wrap">
         <button id="type-toggle">Type ▾</button>
@@ -226,9 +228,40 @@
         <div id="grid">${filtered.map(renderCard).join("")}</div>`;
     }
 
+    // ── era carousel ─────────────────────────────────────────────────────────
+    function renderEraCarousel() {
+      const active = ALL_VIDEOS.filter(v => v.status === "active");
+      const pills  = ALL_ERAS.map(era => {
+        const count    = active.filter(v => v.era === era.name).length;
+        if (!count) return "";
+        const selected = state.eraFrom === era.name && state.eraTo === era.name;
+        return `<button class="era-pill${selected ? " active" : ""}" data-era="${era.name}">
+          ${era.name}
+          <span class="era-pill-count">${count}</span>
+        </button>`;
+      }).join("");
+
+      document.getElementById("era-carousel").innerHTML =
+        `<div id="era-rail">${pills}</div>`;
+
+      document.querySelectorAll(".era-pill").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const era = btn.dataset.era;
+          // toggle off if already selected
+          if (state.eraFrom === era && state.eraTo === era) {
+            state.eraFrom = state.eraTo = null;
+          } else {
+            state.eraFrom = state.eraTo = era;
+          }
+          render();
+        });
+      });
+    }
+
     // ── main render ──────────────────────────────────────────────────────────
     function render() {
       pushToURL();
+      renderEraCarousel();
       renderTypeDropdown();
       populateEraSelects();
       populateYearSelects();
