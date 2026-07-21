@@ -35,11 +35,12 @@ Stack is vanilla HTML/CSS/JS. This is intentional:
 - `js/` files map 1:1 to future React hooks/utilities — keep them modular
 
 ### Hosting
-- GitHub Pages (not Vercel — see `ARCHITECTURE_DECISIONS.md` for why this changed)
+- **Live**: GitHub Pages, serving from `btsbootcamp`'s `main` branch, root — not Vercel (see `ARCHITECTURE_DECISIONS.md` for why this changed)
+- **Domain**: `btsbootcamp.com` — purchased and DNS-configured (A records to GitHub Pages' IPs + `www` CNAME), HTTPS enforced, verified live
+- `index.html` at repo root is a redirect to `mainmuster.html` (GitHub Pages always serves `index.html` at the domain root; `mainmuster.html` stays the real home page per the existing convention)
 - GitHub Actions runs the validate/promote pipeline — free, unlimited minutes since all repos are public
 - YouTube embed API for video playback
-- Domain: TBD (not purchased yet — waiting until first Pages deploy)
-- All three repos (`btsbootcamp`, `burnthestage`, `bestofbootcamp`) are intentionally **public** — this doesn't weaken the write-isolation design (isolation is credential-scope-based, not visibility-based) and it's required for free unlimited Actions minutes
+- All three repos (`btsbootcamp`, `burnthestage`, `bestofbootcamp`) are **public** — required for both free Pages hosting (private repos need GitHub Pro) and unlimited free Actions minutes; doesn't weaken the write-isolation design since that's credential-scope-based, not visibility-based
 
 ## File Structure
 
@@ -178,36 +179,42 @@ All filter state lives in the URL (bookmarkable, shareable):
 | #4 | Era page | Open |
 | #5 | Player improvements | Open |
 | #6 | Bootcamp path | Open |
-| #7 | User profiles | Open |
-| #8 | Progress tracking | Open |
+| #7 | User profiles | Open — pipeline built, needs end-to-end test (see #16) |
+| #8 | Progress tracking | Open — plan is local-first `localStorage`, not yet implemented |
 | #9 | /data page | Open |
 | #10 | /admin page | Open |
-| #11 | api.js | Open |
+| #11 | api.js | Open — likely stays a stub, superseded by the staging/promotion pipeline |
 | #12 | Stats refresh | Open |
-| #13 | User recommendation signals | Open |
+| #13 | User recommendation signals | Open — needs rescoping now that progress is local-first, see `ARCHITECTURE_DECISIONS.md` |
 | #14 | Offline ML recommendation pipeline | Open |
-| #15 | Comments system | Open |
+| #15 | Comments system | Open — likely reuses the staging/promotion pattern from #7 |
+| #16 | Harden and test the user-profile write pipeline | Open — the concrete next step, see body for the checklist |
 
-## Current State
+## Current State (as of 2026-07-21)
+
+**Live:** https://btsbootcamp.com — GitHub Pages, custom domain verified, HTTPS enforced. First real deploy of the whole site happened this session (commit `50dc0be`). All three repos (`btsbootcamp`, `burnthestage`, `bestofbootcamp`) are public.
+
 - [x] Repo initialized, folder structure scaffolded
 - [x] All HTML page stubs, JS stubs, CSS stubs created
-- [x] All 4 data files initialized
-- [x] CLAUDE.md created
 - [x] videos.json — 1,589 videos, full schema with view/like counts
 - [x] eras.json — 18 eras with start dates
 - [x] era auto-assignment in build_videos_json.py
-- [x] Cross-tagging (tags field) for 5 misclassified dance practices
+- [x] Cross-tagging (`tags`) — now **computed automatically** from title text, equal-weighted, no primary category (superseded the old hand-maintained 5-video list; see schema notes above and `ARCHITECTURE_DECISIONS.md`)
+- [x] Song/release linking (`song` field) — new, feeds a same-release recommendation carousel in the player
 - [x] Member tagging — 553 videos retagged from all-7 to solo/unit
 - [x] mainmuster.html — stats bar, era carousel, hero, carousels, era grid
 - [x] pages/index.html — browse/filter with type + member + era + year filters, URL state
-- [x] pages/player.html — two-column layout, 9-carousel rec river, comments shell
-- [x] User profiles (#7) — login + async create-profile via the staging/promotion pipeline; needs end-to-end testing (paste your `burnthestage`-scoped PAT into `js/auth.js`, submit a signup, confirm it promotes into `bestofbootcamp`)
+- [x] pages/player.html — two-column layout, 10-carousel rec river (added the song carousel), comments shell
+- [x] User profiles (#7) — login + async create-profile via the staging/promotion pipeline, all code written and pushed
+- [x] Hosting — GitHub Pages live at btsbootcamp.com
+- [ ] **Not yet done: paste the `burnthestage`-scoped PAT into `js/auth.js`'s `STAGING_TOKEN` placeholder, then run a real signup end-to-end** — nothing in the write pipeline has been exercised with real traffic yet, only validated via scripts. This is the single most important next step — see issue #16 for the full checklist.
 - [ ] Bootcamp path (#6)
 - [ ] Progress tracking (#8) — plan is local-first via `localStorage`, not yet implemented
 - [ ] /data page (#9)
 - [ ] /admin page (#10)
 - [ ] api.js (#11) — likely stays a stub; the write path it was meant for is now handled by the staging/promotion pipeline instead
 - [ ] Comments system (#15) — likely follows the same staging→promote pattern as profiles when built
+- [ ] Cross-tag patterns for Behind/Sketch/Episode categories — not built yet, same casual-vs-formal ambiguity that Dance Practice/MV had needs checking against real titles first, don't guess at a pattern
 
 ## Conventions
 - Query params drive dynamic pages: `?type=`, `?era=`, `?id=`, `?members=`
