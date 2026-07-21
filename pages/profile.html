@@ -132,6 +132,10 @@
       if (draft) {
         try {
           await createComment({ videoId: draft.videoId, username: user.username, comment: draft.comment });
+          // So it shows up as "yours" on the video the moment they land
+          // back there, without waiting on promotion + CDN propagation —
+          // see js/comments.js's local-echo comment.
+          saveLocalComment({ videoId: draft.videoId, username: user.username, comment: draft.comment });
         } catch {
           // Best-effort — if the draft fails to post (e.g. comment now too
           // long), just fall through to the normal logged-in view instead

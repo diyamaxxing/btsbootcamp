@@ -121,3 +121,59 @@ function consumeDraftComment() {
     return null;
   }
 }
+
+// ── Local echo for comments this browser just posted ────────────────────────
+// createComment() only means "accepted into the pipeline," not "live" — on
+// top of the usual ~30s-2min promotion delay, GitHub's raw-content CDN
+// (raw.githubusercontent.com) caches per-edge-node for up to 5 minutes, and
+// different requests can land on different edges, so a reload right after
+// posting can easily still show stale (pre-comment) data even once
+// promotion itself has finished. Rather than make the person wait out both
+// delays to see their own words, remember what THIS browser just posted and
+// merge it into the display until the live data actually catches up — a
+// local echo, not a substitute for the real, shared record.
+const LOCAL_COMMENTS_KEY = "bts_local_pending_comments";
+const LOCAL_COMMENT_TTL_MS = 10 * 60 * 1000; // generous upper bound for promotion + CDN propagation
+
+function readLocalComments() {
+  try {
+    return JSON.parse(localStorage.getItem(LOCAL_COMMENTS_KEY) || "[]");
+  } catch {
+    return [];
+  }
+}
+
+function writeLocalComments(list) {
+  localStorage.setItem(LOCAL_COMMENTS_KEY, JSON.stringify(list));
+}
+
+// Called right after a successful createComment() — from both the direct
+// post path (player.html) and the auto-post-on-login path (profile.html) —
+// so either path survives a reload/redirect the same way.
+function saveLocalComment({ videoId, username, comment }) {
+  const list = readLocalComments();
+  list.push({ video_id: videoId, username, comment, saved_at: Date.now() });
+  writeLocalComments(list);
+}
+
+// Local echoes for one video that the live data doesn't contain yet.
+// Matches on (video_id, username, comment) since the client never learns
+// the server-assigned comment_id — an imperfect but sufficient heuristic
+// for "the real one showed up, stop showing the local copy." Also prunes
+// anything past LOCAL_COMMENT_TTL_MS (e.g. a rejected submission) so a
+// failed post doesn't sit there forever claiming to be "Posting…".
+function pendingLocalComments(liveComments, videoId) {
+  const now = Date.now();
+  const stillPendingForThisVideo = [];
+  const kept = readLocalComments().filter((local) => {
+    if (now - local.saved_at > LOCAL_COMMENT_TTL_MS) return false;
+    const isLive = liveComments.some(
+      (c) => c.video_id === local.video_id && c.username === local.username && c.comment === local.comment
+    );
+    if (isLive) return false;
+    if (local.video_id === videoId) stillPendingForThisVideo.push(local);
+    return true;
+  });
+  writeLocalComments(kept);
+  return stillPendingForThisVideo;
+}

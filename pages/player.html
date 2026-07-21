@@ -205,12 +205,17 @@
         input.disabled = true;
         try {
           const username = getSession();
+          const trimmed = value.trim();
           await createComment({ videoId, username, comment: value });
+          // Persisted locally (not just this DOM insert) so it still shows
+          // up as "yours" if the page reloads before promotion + CDN
+          // propagation catch up — see js/comments.js's local-echo comment.
+          saveLocalComment({ videoId, username, comment: trimmed });
           input.value = "";
           const list = document.getElementById("comment-list");
           const empty = list.querySelector(".comments-empty");
           if (empty) empty.remove();
-          list.insertAdjacentHTML("afterbegin", renderComment({ username, comment: value.trim(), pending: true }));
+          list.insertAdjacentHTML("afterbegin", renderComment({ username, comment: trimmed, pending: true }));
         } catch (err) {
           errorEl.textContent = err.message;
         } finally {
@@ -239,6 +244,11 @@
       const recs     = buildRecommendations(video, videos, eras);
       const metaLine = [video.type, video.era, video.air_date].filter(Boolean).join(" · ");
 
+      // Local echoes (this browser's own not-yet-live comments) go first,
+      // ahead of whatever the live fetch currently has — see js/comments.js.
+      const localPending = pendingLocalComments(comments, video.id).map(c => ({ ...c, pending: true }));
+      const displayComments = [...localPending, ...commentsForVideo(comments, video.id)];
+
       document.getElementById("app").innerHTML = `
         <div id="top-section">
           <div id="player-wrap">
@@ -254,7 +264,7 @@
               <input id="comment-input" type="text" placeholder="${getSession() ? "Add a comment…" : "Log in to comment…"}" />
             </div>
             <p id="comment-error" class="comment-error"></p>
-            <div id="comment-list">${renderCommentList(commentsForVideo(comments, video.id))}</div>
+            <div id="comment-list">${renderCommentList(displayComments)}</div>
           </aside>
         </div>
 
