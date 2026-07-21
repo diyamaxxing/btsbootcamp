@@ -188,7 +188,7 @@ All filter state lives in the URL (bookmarkable, shareable):
 | #4 | Era page | Open |
 | #5 | Player improvements | Open |
 | #6 | Bootcamp path | Open |
-| #7 | User profiles | Open — pipeline rebuilt on the Google-Form intake (see #18); needs a fresh live end-to-end test now that the write mechanism changed |
+| #7 | User profiles | Open — pipeline rebuilt on the Google-Form intake (see #18) and verified live end-to-end |
 | #8 | Progress tracking | Open — plan is local-first `localStorage`, not yet implemented |
 | #9 | /data page | Open |
 | #10 | /admin page | Open |
@@ -196,15 +196,15 @@ All filter state lives in the URL (bookmarkable, shareable):
 | #12 | Stats refresh | Open |
 | #13 | User recommendation signals | Open — needs rescoping now that progress is local-first, see `ARCHITECTURE_DECISIONS.md` |
 | #14 | Offline ML recommendation pipeline | Open |
-| #15 | Comments system | Open — V1 (plain per-video comments, profile-required posting) rebuilt on the Google-Form intake (see #18); needs a fresh live end-to-end test; interval-threading/replies/bubble-overlay/timeline/likes still to come |
+| #15 | Comments system | Open — V1 (plain per-video comments, profile-required posting) rebuilt on the Google-Form intake (see #18) and verified live end-to-end; interval-threading/replies/bubble-overlay/timeline/likes still to come |
 | #16 | Harden and test the user-profile write pipeline | Open — the pipeline it targeted was replaced (see #18); rate limiting/spam handling still relevant, needs revisiting against the new mechanism |
-| #18 | Write pipeline: client-embedded PATs get auto-revoked (blocks #7, #15) | Open — root-caused and redesigned (Google Form intake + scheduled Actions promotion in `bestofbootcamp`), code written, needs your Google Form/service-account setup + live verification before closing |
+| #18 | Write pipeline: client-embedded PATs get auto-revoked (blocks #7, #15) | Resolved and verified live end-to-end — Google Form intake + scheduled Actions promotion in `bestofbootcamp`; ready to close |
 
 ## Current State (as of 2026-07-21)
 
 **Live:** https://btsbootcamp.com — GitHub Pages, custom domain verified, HTTPS enforced. First real deploy of the whole site happened 2026-07-21 (commit `50dc0be`). Both repos (`btsbootcamp`, `bestofbootcamp`) are public — `burnthestage`/`campcomments` still exist but are unused as of the Google-Form-intake rework (#18).
 
-**Signup and comments are currently NOT working live** — the write pipeline they depend on was just rebuilt (see #18) after the previous one's client-embedded tokens got auto-revoked by GitHub. All the new code is written and pushed, but it's untested end-to-end until the Google Forms/service account exist — see #18 for the exact checklist of what's left.
+**Signup and comments are live again** — the write pipeline was fully rebuilt on a Google-Form intake (see #18) after the previous one's client-embedded tokens got auto-revoked by GitHub, and verified end-to-end: real signup/comment through the actual UI → landed in the Google Sheet → promoted by the scheduled Actions workflow into `bestofbootcamp`'s data files → login/read-back confirmed working.
 
 - [x] Repo initialized, folder structure scaffolded
 - [x] All HTML page stubs, JS stubs, CSS stubs created
@@ -220,7 +220,7 @@ All filter state lives in the URL (bookmarkable, shareable):
 - [x] User profiles (#7) — login + async create-profile UI, all code written and pushed; write mechanism just changed (see #18), not yet re-verified live
 - [x] Hosting — GitHub Pages live at btsbootcamp.com
 - [x] Comments V1 (#15) — plain per-video comments, profile-required posting, redirect-to-login with auto-post-on-login for logged-out drafts, local-echo mechanism for immediate self-visibility. All code written and pushed; write mechanism just changed (see #18), not yet re-verified live
-- [x] Google-Form-intake write pipeline (#18) — root cause found and documented (GitHub auto-revokes client-embedded PATs in public repos), every alternative considered and closed out, new design implemented: `js/auth.js`/`js/comments.js`'s `submitToGoogleForm()`, `bestofbootcamp/automation/{signups,comments}/promote.js` + their scheduled workflows, `automation/lib/google-sheets.js` for hand-rolled Sheets-API auth. **Not yet live** — needs the two Google Forms created, their entry IDs/action URLs filled into `js/auth.js`/`js/comments.js` (currently placeholder strings), a Google Cloud service account set up, `GOOGLE_SERVICE_ACCOUNT_KEY` set as a `bestofbootcamp` secret, and Sheet IDs filled into both `promote.js` scripts (also currently placeholders) — then a full live end-to-end test. See #18 for the complete checklist.
+- [x] Google-Form-intake write pipeline (#18) — root cause found and documented (GitHub auto-revokes client-embedded PATs in public repos), every alternative considered and closed out, new design implemented and **verified live end-to-end**: `js/auth.js`/`js/comments.js`'s `submitToGoogleForm()`, `bestofbootcamp/automation/{signups,comments}/promote.js` + their scheduled workflows, `automation/lib/google-sheets.js` for hand-rolled Sheets-API auth. Real signup and comment submitted through the actual UI, both landed in their Sheets, both promoted into `bestofbootcamp`'s data files by a manually-triggered workflow run, login against the promoted user confirmed working, and the reject-unknown-username comment path confirmed correctly rejecting without polluting live data or getting retried. Along the way, fixed a real bug in `submitToGoogleForm()` — resolving on the hidden iframe's "load" event was racing against the iframe's own initial blank-page load, silently dropping every submission; now uses a fixed delay instead.
 - [ ] Bootcamp path (#6)
 - [ ] Progress tracking (#8) — plan is local-first via `localStorage`, not yet implemented
 - [ ] /data page (#9)
