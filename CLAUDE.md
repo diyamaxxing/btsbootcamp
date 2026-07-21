@@ -10,23 +10,24 @@ A fan-built, open-source BTS video hub. Think Netflix-browse meets TikTok-scroll
 
 ## Architecture Decisions (and why)
 
-### GitHub as the database — now across three repos
-Content data (videos, eras) lives as flat JSON in this repo. User-generated data (profiles, and later comments) lives in two *other* repos, split specifically to isolate write-credential blast radius. Full rationale in `ARCHITECTURE_DECISIONS.md`.
+### GitHub as the database — now across four repos
+Content data (videos, eras) lives as flat JSON in this repo. User-generated data (profiles, comments) lives in sibling repos, split specifically to isolate write-credential blast radius. Full rationale in `ARCHITECTURE_DECISIONS.md`.
 
 - `data/videos.json` — master content index, every BTS video (1,589 videos) — lives here, in this repo
 - `data/eras.json` — 18 era definitions with start dates; source of truth for era assignment — lives here, in this repo
-- `data/comments.json` — timestamp-based comments, nested by video + 10-second interval — currently an unused placeholder here; when comments (#15) are built, they'll likely follow the same staging→promotion pattern as user profiles, not write to this file directly
-- **User profiles now live in a separate repo, `bestofbootcamp`**, at `data/users.json` there — NOT in this repo. This repo no longer has a local `data/users.json`; `js/auth.js` fetches it via `https://raw.githubusercontent.com/diyamaxxing/bestofbootcamp/main/data/users.json`.
+- No local `data/comments.json` or `data/users.json` in this repo — both are user-generated data and live in `bestofbootcamp`, not here (see below).
+- **User profiles and comments both live in a separate repo, `bestofbootcamp`**, at `data/users.json` and `data/comments.json` there. `js/auth.js` fetches users via `https://raw.githubusercontent.com/diyamaxxing/bestofbootcamp/main/data/users.json`; `js/comments.js` fetches comments the same way from `data/comments.json` in that repo.
 - **Progress tracking (watched, favorites, PIN) is local-first** — stored in `localStorage`, per-browser, never written to any repo at all. There is no `data/progress.json` write path; that file/approach was superseded.
 
-**The write pipeline (for anything that does need to be shared, like profiles):**
-1. `burnthestage` — staging repo. The public-facing write goes here. `js/auth.js` embeds a GitHub fine-grained PAT scoped *only* to this repo (safe to expose — it can't touch this repo's code or `bestofbootcamp` directly) and creates one file per signup under `pending/`.
-2. A GitHub Actions workflow living in `burnthestage` (`.github/workflows/validate-and-promote.yml` running `scripts/promote.js`) validates each pending submission (valid JSON, matches schema, username not taken) and, using a second credential (`BOB_TOKEN`, a repo secret scoped only to `bestofbootcamp`), promotes valid ones into `bestofbootcamp/data/users.json`. Rejected submissions are just deleted from staging.
-3. Writes are **not instant** — expect roughly 30 seconds to a couple of minutes for a new signup to actually appear live. This is an accepted trade-off; see `ARCHITECTURE_DECISIONS.md`.
+**The write pipeline — two independent staging inboxes, one shared validated destination:**
+- `burnthestage` and `campcomments` are **peer staging repos**, not chained to each other. Each is a "nothing valuable inside" public inbox: a client-embedded, fine-grained PAT scoped *only* to that one repo (`STAGING_TOKEN` in `js/auth.js` for `burnthestage`; `COMMENTS_TOKEN` in `js/comments.js` for `campcomments`) writes one file per submission under `pending/`. A leaked token can only spam that repo's own pending queue — it can never reach the site code or `bestofbootcamp`'s live data.
+- Each staging repo runs its own GitHub Actions workflow (`burnthestage`: `.github/workflows/validate-and-promote.yml` + `scripts/promote.js` for signups; `campcomments`: the same filenames, its own copy, for comments) that validates pending submissions and promotes valid ones into `bestofbootcamp`, using a repo secret named `BOB_TOKEN` — a fine-grained PAT scoped *only* to `bestofbootcamp`, issued separately per staging repo (same name, same scope, different token value in each repo's secrets). Rejected submissions are just deleted from staging.
+- Comment promotion also cross-checks `username` against `bestofbootcamp/data/users.json` (using its own `BOB_TOKEN`, which already has read access there) so a comment can't be promoted for a username that doesn't correspond to a real profile.
+- Writes are **not instant** — expect roughly 30 seconds to a couple of minutes for a new signup or comment to actually appear live. This is an accepted trade-off; see `ARCHITECTURE_DECISIONS.md`.
 
 Reads (videos/eras): fetch JSON via relative path, same repo.
-Reads (users): fetch JSON via GitHub raw content URL, `bestofbootcamp` repo.
-Writes (users): never direct — always through the staging→validate→promote pipeline above.
+Reads (users/comments): fetch JSON via GitHub raw content URL, `bestofbootcamp` repo.
+Writes (users/comments): never direct — always through a staging repo's own validate→promote pipeline above.
 
 ### No framework (for now)
 Stack is vanilla HTML/CSS/JS. This is intentional:
@@ -40,7 +41,7 @@ Stack is vanilla HTML/CSS/JS. This is intentional:
 - `index.html` at repo root is a redirect to `mainmuster.html` (GitHub Pages always serves `index.html` at the domain root; `mainmuster.html` stays the real home page per the existing convention)
 - GitHub Actions runs the validate/promote pipeline — free, unlimited minutes since all repos are public
 - YouTube embed API for video playback
-- All three repos (`btsbootcamp`, `burnthestage`, `bestofbootcamp`) are **public** — required for both free Pages hosting (private repos need GitHub Pro) and unlimited free Actions minutes; doesn't weaken the write-isolation design since that's credential-scope-based, not visibility-based
+- All four repos (`btsbootcamp`, `burnthestage`, `campcomments`, `bestofbootcamp`) are **public** — required for both free Pages hosting (private repos need GitHub Pro) and unlimited free Actions minutes; doesn't weaken the write-isolation design since that's credential-scope-based, not visibility-based
 
 ## File Structure
 
@@ -48,8 +49,7 @@ Stack is vanilla HTML/CSS/JS. This is intentional:
 btsbootcamp/                 # this repo — site code + content data (public)
 ├── data/                    # content data only — NOT user-generated data
 │   ├── videos.json          # 1,589 videos, full schema
-│   ├── eras.json             # 18 era definitions
-│   └── comments.json         # placeholder — comments (#15) not yet built
+│   └── eras.json             # 18 era definitions
 ├── data/raws/                # source CSVs (5 playlists)
 ├── css/
 │   ├── main.css              # global reset, nav, dark base
@@ -58,6 +58,7 @@ btsbootcamp/                 # this repo — site code + content data (public)
 │   └── profile.css            # login/create-profile forms
 ├── js/
 │   ├── auth.js               # wired up — see "GitHub as the database" above
+│   ├── comments.js            # wired up — plain per-video comments (#15 V1), see above
 │   └── ...                    # rest still stubs
 ├── scripts/
 │   ├── fetch_playlists.py    # YouTube Data API v3 fetcher (all 5 playlists)
@@ -66,7 +67,7 @@ btsbootcamp/                 # this repo — site code + content data (public)
 │   └── tag_members.py        # heuristic member tagger (--apply to write)
 ├── pages/
 │   ├── index.html            # browse/filter page (URL-driven state)
-│   ├── player.html            # video player + recommendations + comments shell
+│   ├── player.html            # video player + recommendations + comments
 │   ├── profile.html            # login + create-profile (writes to burnthestage)
 │   └── ...stubs
 ├── mainmuster.html            # ← home page IS AT ROOT, not in /pages/
@@ -74,15 +75,20 @@ btsbootcamp/                 # this repo — site code + content data (public)
 ├── ARCHITECTURE_DECISIONS.md  # running log of the "why" behind architecture calls
 └── BTSBootcamp-Requirements.md
 
-burnthestage/                 # sibling repo (public) — staging/write inbox
+burnthestage/                 # sibling repo (public) — staging inbox for signups
 ├── pending/                   # one file per pending signup, written by js/auth.js
-└── .github/workflows/validate-and-promote.yml  # + scripts/promote.js
+└── .github/workflows/validate-and-promote.yml  # + scripts/promote.js → bestofbootcamp/data/users.json
 
-bestofbootcamp/               # sibling repo (public) — live user data
-└── data/users.json            # the REAL, live user profiles — not in this repo
+campcomments/                 # sibling repo (public) — staging inbox for comments (peer of burnthestage)
+├── pending/                   # one file per pending comment, written by js/comments.js
+└── .github/workflows/validate-and-promote.yml  # + scripts/promote.js → bestofbootcamp/data/comments.json
+
+bestofbootcamp/               # sibling repo (public) — live, validated user-generated data
+├── data/users.json            # the REAL, live user profiles — not in this repo
+└── data/comments.json         # the REAL, live comments — not in this repo
 ```
 
-**Important:** `mainmuster.html` lives at the repo root. `pages/index.html` and `pages/player.html` are in `/pages/`. All paths in mainmuster.html use `css/`, `data/`, `pages/player.html` (no `../`). All paths in `/pages/` files use `../css/`, `../data/`, `../mainmuster.html`. There is no local `data/users.json` or `data/progress.json` in this repo anymore — see the write-pipeline and local-first decisions above.
+**Important:** `mainmuster.html` lives at the repo root. `pages/index.html` and `pages/player.html` are in `/pages/`. All paths in mainmuster.html use `css/`, `data/`, `pages/player.html` (no `../`). All paths in `/pages/` files use `../css/`, `../data/`, `../mainmuster.html`. There is no local `data/users.json`, `data/comments.json`, or `data/progress.json` in this repo — see the write-pipeline and local-first decisions above.
 
 ## Video Schema (data/videos.json)
 ```json
@@ -167,6 +173,7 @@ All filter state lives in the URL (bookmarkable, shareable):
 
 ## JS Module Responsibilities
 - `auth.js` — **wired up.** Fetches users from `bestofbootcamp`; writes new signups to `burnthestage/pending/`; session is just a username pointer in `localStorage`. See "GitHub as the database" above.
+- `comments.js` — **wired up (V1: flat per-video comments, no intervals/replies/likes yet).** Fetches comments from `bestofbootcamp`; writes new comments to `campcomments/pending/`; also holds the localStorage draft (`bts_pending_comment_draft`) that lets a logged-out visitor's comment survive the redirect to `profile.html` and auto-post on login. Depends on `auth.js` being loaded first (reuses its `DATA_OWNER`/`DATA_REPO`/`utf8ToBase64`/`getSession` as globals).
 - `api.js` — no longer needed for the write path (superseded by the staging→promote pipeline); leave as a stub unless a future feature needs direct GitHub API reads/writes of its own
 - `player.js` — YouTube embed API, autoplay logic, queue management
 - `progress.js` — watch tracking, favorites, history — **local-first**, reads/writes `localStorage` only, never a repo file
@@ -187,12 +194,12 @@ All filter state lives in the URL (bookmarkable, shareable):
 | #12 | Stats refresh | Open |
 | #13 | User recommendation signals | Open — needs rescoping now that progress is local-first, see `ARCHITECTURE_DECISIONS.md` |
 | #14 | Offline ML recommendation pipeline | Open |
-| #15 | Comments system | Open — likely reuses the staging/promotion pattern from #7 |
+| #15 | Comments system | Open — V1 (plain per-video comments, profile-required posting) built and staged for verification; interval-threading/replies/bubble-overlay/timeline/likes still to come |
 | #16 | Harden and test the user-profile write pipeline | Open — live end-to-end signup test done; hardening items (rate limiting, spam handling) remain |
 
 ## Current State (as of 2026-07-21)
 
-**Live:** https://btsbootcamp.com — GitHub Pages, custom domain verified, HTTPS enforced. First real deploy of the whole site happened this session (commit `50dc0be`). All three repos (`btsbootcamp`, `burnthestage`, `bestofbootcamp`) are public.
+**Live:** https://btsbootcamp.com — GitHub Pages, custom domain verified, HTTPS enforced. First real deploy of the whole site happened 2026-07-21 (commit `50dc0be`). All four repos (`btsbootcamp`, `burnthestage`, `campcomments`, `bestofbootcamp`) are public.
 
 - [x] Repo initialized, folder structure scaffolded
 - [x] All HTML page stubs, JS stubs, CSS stubs created
@@ -204,16 +211,17 @@ All filter state lives in the URL (bookmarkable, shareable):
 - [x] Member tagging — 553 videos retagged from all-7 to solo/unit
 - [x] mainmuster.html — stats bar, era carousel, hero, carousels, era grid
 - [x] pages/index.html — browse/filter with type + member + era + year filters, URL state
-- [x] pages/player.html — two-column layout, 10-carousel rec river (added the song carousel), comments shell
+- [x] pages/player.html — two-column layout, 10-carousel rec river (added the song carousel), comments wired up
 - [x] User profiles (#7) — login + async create-profile via the staging/promotion pipeline, all code written and pushed
 - [x] Hosting — GitHub Pages live at btsbootcamp.com
 - [x] Write pipeline verified live end-to-end (#16 core checklist) — real `STAGING_TOKEN` pasted into `js/auth.js`, a real signup submitted through `pages/profile.html`, confirmed written to `burnthestage/pending/`, promoted by the Actions workflow into `bestofbootcamp/data/users.json`, pending file auto-cleaned, and login against the promoted user (PIN check included) confirmed working. Token verified properly scoped (403 on admin-only endpoints like listing repo secrets). Remaining #16 items (rate limiting, spam handling, etc. — see issue body) still open.
+- [x] Comments V1 (#15) — plain per-video comments, profile-required posting, redirect-to-login with auto-post-on-login for logged-out drafts. New peer staging repo `campcomments` created and pushed; `bestofbootcamp/data/comments.json` bootstrapped to `[]`; `js/comments.js` + `pages/player.html`/`pages/profile.html` wiring written. **Not yet done: you need to generate the two new fine-grained PATs (`COMMENTS_TOKEN` for `js/comments.js`, and a `BOB_TOKEN` secret in `campcomments` scoped to `bestofbootcamp`) — see the plan file or ask Claude for the step-by-step — then a live end-to-end test (same shape as #16's) still needs to run.**
 - [ ] Bootcamp path (#6)
 - [ ] Progress tracking (#8) — plan is local-first via `localStorage`, not yet implemented
 - [ ] /data page (#9)
 - [ ] /admin page (#10)
 - [ ] api.js (#11) — likely stays a stub; the write path it was meant for is now handled by the staging/promotion pipeline instead
-- [ ] Comments system (#15) — likely follows the same staging→promote pattern as profiles when built
+- [ ] Comments V2 — 10-second-interval threading, nested replies, floating top-comment bubble overlay, full-timeline scrubbing, local per-browser likes (deferred scope from #15, see `ARCHITECTURE_DECISIONS.md`)
 - [ ] Cross-tag patterns for Behind/Sketch/Episode categories — not built yet, same casual-vs-formal ambiguity that Dance Practice/MV had needs checking against real titles first, don't guess at a pattern
 
 ## Conventions

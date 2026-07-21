@@ -17,6 +17,8 @@
     <p>Loading...</p>
   </main>
 
+  <script src="../js/auth.js"></script>
+  <script src="../js/comments.js"></script>
   <script>
     function ytId(url) {
       const m = url.match(/v=([a-zA-Z0-9_-]{11})/);
@@ -157,13 +159,74 @@
         </div>`;
     }
 
+    // ── comments ─────────────────────────────────────────────────────────────
+    // Flat, per-video list — no interval bucketing yet (see js/comments.js).
+    function fmtCommentTime(iso) {
+      return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+    }
+
+    // `pending: true` marks a just-submitted, not-yet-promoted comment shown
+    // optimistically — promotion isn't instant, same as signups.
+    function renderComment(c) {
+      const time = c.pending ? "Posting…" : fmtCommentTime(c.posted_at);
+      return `
+        <div class="comment-item${c.pending ? " comment-pending" : ""}">
+          <p class="comment-author">${c.username}</p>
+          <p class="comment-text">${c.comment}</p>
+          <p class="comment-time">${time}</p>
+        </div>`;
+    }
+
+    function renderCommentList(list) {
+      if (!list.length) return `<p class="comments-empty">Be the first to comment.</p>`;
+      return list.map(renderComment).join("");
+    }
+
+    // Wires the (now-enabled) comment input once its markup is in the DOM.
+    // Not logged in: saves the draft and sends the visitor to log in/sign
+    // up — profile.html auto-posts it on successful login. Logged in:
+    // posts for real and shows it optimistically at the top of the list.
+    function wireCommentInput(videoId) {
+      const input = document.getElementById("comment-input");
+      const errorEl = document.getElementById("comment-error");
+
+      input.addEventListener("keydown", async (e) => {
+        if (e.key !== "Enter") return;
+        const value = input.value;
+        if (!value.trim()) return;
+
+        if (!getSession()) {
+          saveDraftComment({ videoId, comment: value });
+          window.location.href = "profile.html";
+          return;
+        }
+
+        errorEl.textContent = "";
+        input.disabled = true;
+        try {
+          const username = getSession();
+          await createComment({ videoId, username, comment: value });
+          input.value = "";
+          const list = document.getElementById("comment-list");
+          const empty = list.querySelector(".comments-empty");
+          if (empty) empty.remove();
+          list.insertAdjacentHTML("afterbegin", renderComment({ username, comment: value.trim(), pending: true }));
+        } catch (err) {
+          errorEl.textContent = err.message;
+        } finally {
+          input.disabled = false;
+        }
+      });
+    }
+
     // ── boot ─────────────────────────────────────────────────────────────────
     const recordId = new URLSearchParams(window.location.search).get("id");
 
     Promise.all([
       fetch("../data/videos.json").then(r => r.json()),
       fetch("../data/eras.json").then(r => r.json()),
-    ]).then(([videos, eras]) => {
+      loadComments(),
+    ]).then(([videos, eras, comments]) => {
       const video = videos.find(v => v.id === recordId);
       if (!video) {
         document.getElementById("app").innerHTML = `<p>Video not found: ${recordId}</p>`;
@@ -188,11 +251,10 @@
           <aside id="comments-col">
             <h2 class="sidebar-heading">Comments</h2>
             <div id="comment-input-wrap">
-              <input id="comment-input" type="text" placeholder="Comments coming soon…" disabled />
+              <input id="comment-input" type="text" placeholder="${getSession() ? "Add a comment…" : "Log in to comment…"}" />
             </div>
-            <div id="comment-list">
-              <p class="comments-empty">Be the first to comment.</p>
-            </div>
+            <p id="comment-error" class="comment-error"></p>
+            <div id="comment-list">${renderCommentList(commentsForVideo(comments, video.id))}</div>
           </aside>
         </div>
 
@@ -207,6 +269,8 @@
         <div id="recommendations">
           ${recs.map(r => renderCarousel(r.title, r.videos)).join("")}
         </div>`;
+
+      wireCommentInput(video.id);
     }).catch(err => {
       document.getElementById("app").innerHTML = `<p>Error: ${err.message}</p>`;
     });

@@ -18,10 +18,12 @@
   </main>
 
   <script src="../js/auth.js"></script>
+  <script src="../js/comments.js"></script>
   <script>
     // auth.js provides loadUsers/findUser/verifyPin/createUser/getSession/
-    // setSession/clearSession — this inline script is just the page-specific
-    // rendering glue on top of those.
+    // setSession/clearSession; comments.js provides createComment/
+    // consumeDraftComment/DRAFT_KEY — this inline script is just the
+    // page-specific rendering glue on top of those.
 
     const MEMBERS = ["RM", "Jin", "Suga", "J-Hope", "Jimin", "V", "Jungkook"];
 
@@ -121,6 +123,24 @@
       }
 
       setSession(user.username);
+
+      // A comment typed while logged out (see js/comments.js's Enter
+      // handler on player.html) is saved as a draft and redirected here.
+      // Post it now that login succeeded, then take them back to the
+      // video instead of the normal logged-in profile view.
+      const draft = consumeDraftComment();
+      if (draft) {
+        try {
+          await createComment({ videoId: draft.videoId, username: user.username, comment: draft.comment });
+        } catch {
+          // Best-effort — if the draft fails to post (e.g. comment now too
+          // long), just fall through to the normal logged-in view instead
+          // of blocking login on it.
+        }
+        window.location.href = `player.html?id=${encodeURIComponent(draft.videoId)}`;
+        return;
+      }
+
       render();
     }
 
@@ -149,11 +169,15 @@
     // a logged-in view, since the account doesn't exist in bestofbootcamp
     // until the Actions workflow promotes it.
     function renderPending(app, username) {
+      // Peeks (doesn't consume) so the draft is still there for handleLogin
+      // to post once they actually log back in.
+      const hasDraft = !!localStorage.getItem(DRAFT_KEY);
       app.innerHTML = `
         <div id="profile-card">
           <h1>Request submitted</h1>
           <p class="profile-meta">Your profile "${username}" is being created — this usually takes a minute or two.</p>
           <p class="profile-meta">Try logging in shortly.</p>
+          ${hasDraft ? `<p class="profile-meta">Your comment will post automatically once you log back in.</p>` : ""}
           <button id="back-to-login-btn">Back to login</button>
         </div>
       `;
