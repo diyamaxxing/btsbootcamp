@@ -10,8 +10,8 @@ A fan-built, open-source BTS video hub. Think Netflix-browse meets TikTok-scroll
 
 ## Architecture Decisions (and why)
 
-### GitHub as the database — now across four repos
-Content data (videos, eras) lives as flat JSON in this repo. User-generated data (profiles, comments) lives in sibling repos, split specifically to isolate write-credential blast radius. Full rationale in `ARCHITECTURE_DECISIONS.md`.
+### GitHub as the database — now across two repos
+Content data (videos, eras) lives as flat JSON in this repo. User-generated data (profiles, comments) lives in `bestofbootcamp`. Full rationale, including the design this superseded and why, in `ARCHITECTURE_DECISIONS.md`.
 
 - `data/videos.json` — master content index, every BTS video (1,589 videos) — lives here, in this repo
 - `data/eras.json` — 18 era definitions with start dates; source of truth for era assignment — lives here, in this repo
@@ -19,15 +19,16 @@ Content data (videos, eras) lives as flat JSON in this repo. User-generated data
 - **User profiles and comments both live in a separate repo, `bestofbootcamp`**, at `data/users.json` and `data/comments.json` there. `js/auth.js` fetches users via `https://raw.githubusercontent.com/diyamaxxing/bestofbootcamp/main/data/users.json`; `js/comments.js` fetches comments the same way from `data/comments.json` in that repo.
 - **Progress tracking (watched, favorites, PIN) is local-first** — stored in `localStorage`, per-browser, never written to any repo at all. There is no `data/progress.json` write path; that file/approach was superseded.
 
-**The write pipeline — two independent staging inboxes, one shared validated destination:**
-- `burnthestage` and `campcomments` are **peer staging repos**, not chained to each other. Each is a "nothing valuable inside" public inbox: a client-embedded, fine-grained PAT scoped *only* to that one repo (`STAGING_TOKEN` in `js/auth.js` for `burnthestage`; `COMMENTS_TOKEN` in `js/comments.js` for `campcomments`) writes one file per submission under `pending/`. A leaked token can only spam that repo's own pending queue — it can never reach the site code or `bestofbootcamp`'s live data.
-- Each staging repo runs its own GitHub Actions workflow (`burnthestage`: `.github/workflows/validate-and-promote.yml` + `scripts/promote.js` for signups; `campcomments`: the same filenames, its own copy, for comments) that validates pending submissions and promotes valid ones into `bestofbootcamp`, using a repo secret named `BOB_TOKEN` — a fine-grained PAT scoped *only* to `bestofbootcamp`, issued separately per staging repo (same name, same scope, different token value in each repo's secrets). Rejected submissions are just deleted from staging.
-- Comment promotion also cross-checks `username` against `bestofbootcamp/data/users.json` (using its own `BOB_TOKEN`, which already has read access there) so a comment can't be promoted for a username that doesn't correspond to a real profile.
-- Writes are **not instant** — expect roughly 30 seconds to a couple of minutes for a new signup or comment to actually appear live. This is an accepted trade-off; see `ARCHITECTURE_DECISIONS.md`.
+**The write pipeline — Google Form intake, no credential in the browser at all:**
+- A visitor's browser never holds any write-capable credential. `js/auth.js`/`js/comments.js`'s `submitToGoogleForm()` does a real hidden-`<iframe>` `<form>` POST directly to a Google Form's own submission endpoint — no account, no token, nothing for anyone to extract from the page's source. (An earlier design embedded a fine-grained GitHub PAT client-side instead; it doesn't work — GitHub auto-revokes its own PAT-format tokens the moment they're detected in a public repo, confirmed twice. Full story in `ARCHITECTURE_DECISIONS.md` and issue #18.)
+- Every Form response becomes a row in that form's linked Google Sheet. `bestofbootcamp/automation/signups/promote.js` and `automation/comments/promote.js` — each on its own `schedule`-triggered (every 5 min) + `workflow_dispatch`-enabled GitHub Actions workflow, `schedule` being the only trigger type that needs zero credential from an anonymous caller — read new rows via the Sheets API, using a Google service-account credential that lives *only* as the `GOOGLE_SERVICE_ACCOUNT_KEY` repo secret, never client-exposed.
+- Both scripts validate each row (same rules the old pipeline had — username pattern, comment length, etc.) and write accepted entries straight into `bestofbootcamp`'s own `data/users.json`/`data/comments.json` on disk (already checked out — no cross-repo API calls needed), committing with the workflow's auto-provided `GITHUB_TOKEN`. Comment promotion cross-checks `username` against the same repo's `data/users.json` (now a plain local read) so a comment can't be promoted for a username with no real profile. Handled rows (accepted or rejected) get marked in a `Processed` column so nothing is retried forever.
+- Writes are **not instant** — expect a few minutes (the 5-minute poll floor, plus whatever the run itself takes) for a new signup or comment to actually appear live. `js/comments.js`'s local-echo mechanism (`saveLocalComment`/`pendingLocalComments`) shows a person their own just-submitted comment immediately regardless of this delay — see `ARCHITECTURE_DECISIONS.md`.
+- `burnthestage`/`campcomments` (the old staging repos) are unused now — the reason for splitting into separate repos was containing a client-embedded credential's blast radius, and there is no client-embedded credential anymore. Not deleted automatically; that's a separate decision.
 
 Reads (videos/eras): fetch JSON via relative path, same repo.
 Reads (users/comments): fetch JSON via GitHub raw content URL, `bestofbootcamp` repo.
-Writes (users/comments): never direct — always through a staging repo's own validate→promote pipeline above.
+Writes (users/comments): never direct — always through the Google Form → scheduled-promotion pipeline above.
 
 ### No framework (for now)
 Stack is vanilla HTML/CSS/JS. This is intentional:
@@ -41,7 +42,7 @@ Stack is vanilla HTML/CSS/JS. This is intentional:
 - `index.html` at repo root is a redirect to `mainmuster.html` (GitHub Pages always serves `index.html` at the domain root; `mainmuster.html` stays the real home page per the existing convention)
 - GitHub Actions runs the validate/promote pipeline — free, unlimited minutes since all repos are public
 - YouTube embed API for video playback
-- All four repos (`btsbootcamp`, `burnthestage`, `campcomments`, `bestofbootcamp`) are **public** — required for both free Pages hosting (private repos need GitHub Pro) and unlimited free Actions minutes; doesn't weaken the write-isolation design since that's credential-scope-based, not visibility-based
+- Both repos (`btsbootcamp`, `bestofbootcamp`) are **public** — required for free Pages hosting (private repos need GitHub Pro) and unlimited free Actions minutes; doesn't weaken the write pipeline's safety since no credential is ever exposed in either repo's content in the first place
 
 ## File Structure
 
@@ -68,25 +69,26 @@ btsbootcamp/                 # this repo — site code + content data (public)
 ├── pages/
 │   ├── index.html            # browse/filter page (URL-driven state)
 │   ├── player.html            # video player + recommendations + comments
-│   ├── profile.html            # login + create-profile (writes to burnthestage)
+│   ├── profile.html            # login + create-profile (submits to a Google Form)
 │   └── ...stubs
 ├── mainmuster.html            # ← home page IS AT ROOT, not in /pages/
 ├── CLAUDE.md                  # this file
 ├── ARCHITECTURE_DECISIONS.md  # running log of the "why" behind architecture calls
 └── BTSBootcamp-Requirements.md
 
-burnthestage/                 # sibling repo (public) — staging inbox for signups
-├── pending/                   # one file per pending signup, written by js/auth.js
-└── .github/workflows/validate-and-promote.yml  # + scripts/promote.js → bestofbootcamp/data/users.json
-
-campcomments/                 # sibling repo (public) — staging inbox for comments (peer of burnthestage)
-├── pending/                   # one file per pending comment, written by js/comments.js
-└── .github/workflows/validate-and-promote.yml  # + scripts/promote.js → bestofbootcamp/data/comments.json
-
-bestofbootcamp/               # sibling repo (public) — live, validated user-generated data
+bestofbootcamp/               # sibling repo (public) — live, validated user-generated data + automation
 ├── data/users.json            # the REAL, live user profiles — not in this repo
-└── data/comments.json         # the REAL, live comments — not in this repo
+├── data/comments.json         # the REAL, live comments — not in this repo
+├── automation/
+│   ├── lib/google-sheets.js   # shared Sheets-API auth (hand-rolled JWT, no npm deps)
+│   ├── signups/promote.js     # reads the signup Sheet, validates, writes data/users.json
+│   └── comments/promote.js    # reads the comment Sheet, validates, writes data/comments.json
+└── .github/workflows/
+    ├── promote-signups.yml    # schedule (*/5 min) + workflow_dispatch
+    └── promote-comments.yml   # schedule (*/5 min) + workflow_dispatch
 ```
+
+`burnthestage`/`campcomments` (the old staging repos) still exist but are unused as of 2026-07-21 — not part of the file structure above since nothing reads from or writes to them anymore.
 
 **Important:** `mainmuster.html` lives at the repo root. `pages/index.html` and `pages/player.html` are in `/pages/`. All paths in mainmuster.html use `css/`, `data/`, `pages/player.html` (no `../`). All paths in `/pages/` files use `../css/`, `../data/`, `../mainmuster.html`. There is no local `data/users.json`, `data/comments.json`, or `data/progress.json` in this repo — see the write-pipeline and local-first decisions above.
 
@@ -172,9 +174,9 @@ All filter state lives in the URL (bookmarkable, shareable):
 - `?yearFrom=2016&yearTo=2019` — year range from air_date
 
 ## JS Module Responsibilities
-- `auth.js` — **wired up.** Fetches users from `bestofbootcamp`; writes new signups to `burnthestage/pending/`; session is just a username pointer in `localStorage`. See "GitHub as the database" above.
-- `comments.js` — **wired up (V1: flat per-video comments, no intervals/replies/likes yet).** Fetches comments from `bestofbootcamp`; writes new comments to `campcomments/pending/`; also holds the localStorage draft (`bts_pending_comment_draft`) that lets a logged-out visitor's comment survive the redirect to `profile.html` and auto-post on login. Depends on `auth.js` being loaded first (reuses its `DATA_OWNER`/`DATA_REPO`/`utf8ToBase64`/`getSession` as globals).
-- `api.js` — no longer needed for the write path (superseded by the staging→promote pipeline); leave as a stub unless a future feature needs direct GitHub API reads/writes of its own
+- `auth.js` — **wired up.** Fetches users from `bestofbootcamp`; `createUser()` submits new signups to a Google Form via `submitToGoogleForm()` (also defined here, reused by `comments.js`) — no credential of any kind involved; session is just a username pointer in `localStorage`. `SIGNUP_FORM_URL`/`SIGNUP_FORM_FIELDS` hold the form's endpoint and entry IDs. See "GitHub as the database" above.
+- `comments.js` — **wired up (V1: flat per-video comments, no intervals/replies/likes yet).** Fetches comments from `bestofbootcamp`; `createComment()` submits to a separate Google Form the same way `auth.js` does; also holds the localStorage draft (`bts_pending_comment_draft`) that lets a logged-out visitor's comment survive the redirect to `profile.html` and auto-post on login, and the local-echo mechanism (`saveLocalComment`/`pendingLocalComments`) that shows a person their own comment immediately regardless of promotion delay. Depends on `auth.js` being loaded first (reuses its `DATA_OWNER`/`DATA_REPO`/`getSession`/`submitToGoogleForm` as globals).
+- `api.js` — no longer needed for the write path (superseded by the Google-Form/scheduled-promotion pipeline); leave as a stub unless a future feature needs direct GitHub API reads/writes of its own
 - `player.js` — YouTube embed API, autoplay logic, queue management
 - `progress.js` — watch tracking, favorites, history — **local-first**, reads/writes `localStorage` only, never a repo file
 - `nav.js` — shared nav behavior across all pages
@@ -186,20 +188,23 @@ All filter state lives in the URL (bookmarkable, shareable):
 | #4 | Era page | Open |
 | #5 | Player improvements | Open |
 | #6 | Bootcamp path | Open |
-| #7 | User profiles | Open — pipeline built and verified end-to-end live (see #16) |
+| #7 | User profiles | Open — pipeline rebuilt on the Google-Form intake (see #18); needs a fresh live end-to-end test now that the write mechanism changed |
 | #8 | Progress tracking | Open — plan is local-first `localStorage`, not yet implemented |
 | #9 | /data page | Open |
 | #10 | /admin page | Open |
-| #11 | api.js | Open — likely stays a stub, superseded by the staging/promotion pipeline |
+| #11 | api.js | Open — likely stays a stub, superseded by the Google-Form/scheduled-promotion pipeline |
 | #12 | Stats refresh | Open |
 | #13 | User recommendation signals | Open — needs rescoping now that progress is local-first, see `ARCHITECTURE_DECISIONS.md` |
 | #14 | Offline ML recommendation pipeline | Open |
-| #15 | Comments system | Open — V1 (plain per-video comments, profile-required posting) built and staged for verification; interval-threading/replies/bubble-overlay/timeline/likes still to come |
-| #16 | Harden and test the user-profile write pipeline | Open — live end-to-end signup test done; hardening items (rate limiting, spam handling) remain |
+| #15 | Comments system | Open — V1 (plain per-video comments, profile-required posting) rebuilt on the Google-Form intake (see #18); needs a fresh live end-to-end test; interval-threading/replies/bubble-overlay/timeline/likes still to come |
+| #16 | Harden and test the user-profile write pipeline | Open — the pipeline it targeted was replaced (see #18); rate limiting/spam handling still relevant, needs revisiting against the new mechanism |
+| #18 | Write pipeline: client-embedded PATs get auto-revoked (blocks #7, #15) | Open — root-caused and redesigned (Google Form intake + scheduled Actions promotion in `bestofbootcamp`), code written, needs your Google Form/service-account setup + live verification before closing |
 
 ## Current State (as of 2026-07-21)
 
-**Live:** https://btsbootcamp.com — GitHub Pages, custom domain verified, HTTPS enforced. First real deploy of the whole site happened 2026-07-21 (commit `50dc0be`). All four repos (`btsbootcamp`, `burnthestage`, `campcomments`, `bestofbootcamp`) are public.
+**Live:** https://btsbootcamp.com — GitHub Pages, custom domain verified, HTTPS enforced. First real deploy of the whole site happened 2026-07-21 (commit `50dc0be`). Both repos (`btsbootcamp`, `bestofbootcamp`) are public — `burnthestage`/`campcomments` still exist but are unused as of the Google-Form-intake rework (#18).
+
+**Signup and comments are currently NOT working live** — the write pipeline they depend on was just rebuilt (see #18) after the previous one's client-embedded tokens got auto-revoked by GitHub. All the new code is written and pushed, but it's untested end-to-end until the Google Forms/service account exist — see #18 for the exact checklist of what's left.
 
 - [x] Repo initialized, folder structure scaffolded
 - [x] All HTML page stubs, JS stubs, CSS stubs created
@@ -212,16 +217,18 @@ All filter state lives in the URL (bookmarkable, shareable):
 - [x] mainmuster.html — stats bar, era carousel, hero, carousels, era grid
 - [x] pages/index.html — browse/filter with type + member + era + year filters, URL state
 - [x] pages/player.html — two-column layout, 10-carousel rec river (added the song carousel), comments wired up
-- [x] User profiles (#7) — login + async create-profile via the staging/promotion pipeline, all code written and pushed
+- [x] User profiles (#7) — login + async create-profile UI, all code written and pushed; write mechanism just changed (see #18), not yet re-verified live
 - [x] Hosting — GitHub Pages live at btsbootcamp.com
-- [x] Write pipeline verified live end-to-end (#16 core checklist) — real `STAGING_TOKEN` pasted into `js/auth.js`, a real signup submitted through `pages/profile.html`, confirmed written to `burnthestage/pending/`, promoted by the Actions workflow into `bestofbootcamp/data/users.json`, pending file auto-cleaned, and login against the promoted user (PIN check included) confirmed working. Token verified properly scoped (403 on admin-only endpoints like listing repo secrets). Remaining #16 items (rate limiting, spam handling, etc. — see issue body) still open.
-- [x] Comments V1 (#15) — plain per-video comments, profile-required posting, redirect-to-login with auto-post-on-login for logged-out drafts. New peer staging repo `campcomments` created and pushed; `bestofbootcamp/data/comments.json` bootstrapped to `[]`; `COMMENTS_TOKEN` (client, in `js/comments.js`) and `BOB_TOKEN` (server secret in `campcomments`, scoped to `bestofbootcamp`) both generated and verified correctly scoped. **Verified live end-to-end**, both the direct-post path and the logged-out-draft → login → auto-post → redirect path — comment landed in `campcomments/pending/`, promoted into `bestofbootcamp/data/comments.json`, rendered on the player page. Also added a local-echo mechanism (`js/comments.js`'s `saveLocalComment`/`pendingLocalComments`, `localStorage` key `bts_local_pending_comments`) after live testing showed a reload right after posting could show stale data — not just from the usual promotion delay, but because `raw.githubusercontent.com` caches per-CDN-edge for up to 5 minutes and different requests can land on different edges. A comment this browser just posted now shows immediately regardless of either delay.
+- [x] Comments V1 (#15) — plain per-video comments, profile-required posting, redirect-to-login with auto-post-on-login for logged-out drafts, local-echo mechanism for immediate self-visibility. All code written and pushed; write mechanism just changed (see #18), not yet re-verified live
+- [x] Google-Form-intake write pipeline (#18) — root cause found and documented (GitHub auto-revokes client-embedded PATs in public repos), every alternative considered and closed out, new design implemented: `js/auth.js`/`js/comments.js`'s `submitToGoogleForm()`, `bestofbootcamp/automation/{signups,comments}/promote.js` + their scheduled workflows, `automation/lib/google-sheets.js` for hand-rolled Sheets-API auth. **Not yet live** — needs the two Google Forms created, their entry IDs/action URLs filled into `js/auth.js`/`js/comments.js` (currently placeholder strings), a Google Cloud service account set up, `GOOGLE_SERVICE_ACCOUNT_KEY` set as a `bestofbootcamp` secret, and Sheet IDs filled into both `promote.js` scripts (also currently placeholders) — then a full live end-to-end test. See #18 for the complete checklist.
 - [ ] Bootcamp path (#6)
 - [ ] Progress tracking (#8) — plan is local-first via `localStorage`, not yet implemented
 - [ ] /data page (#9)
 - [ ] /admin page (#10)
-- [ ] api.js (#11) — likely stays a stub; the write path it was meant for is now handled by the staging/promotion pipeline instead
+- [ ] api.js (#11) — likely stays a stub; the write path it was meant for is now handled by the Google-Form/scheduled-promotion pipeline instead
 - [ ] Comments V2 — 10-second-interval threading, nested replies, floating top-comment bubble overlay, full-timeline scrubbing, local per-browser likes (deferred scope from #15, see `ARCHITECTURE_DECISIONS.md`)
+- [ ] Harden #18's pipeline (rate limiting, spam handling — carried over from #16's original scope, now against the new mechanism)
+- [ ] Decide what to do with the now-unused `burnthestage`/`campcomments` repos (archive vs. delete vs. leave alone)
 - [ ] Cross-tag patterns for Behind/Sketch/Episode categories — not built yet, same casual-vs-formal ambiguity that Dance Practice/MV had needs checking against real titles first, don't guess at a pattern
 
 ## Conventions

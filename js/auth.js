@@ -1,45 +1,96 @@
 // ── Profile auth: login, signup, session ────────────────────────────────────
 //
-// There is no local users.json in this repo anymore. User profiles are
-// managed across two sibling repos to keep a write credential from ever
-// being able to touch this repo's code:
+// There is no local users.json in this repo anymore. User profiles live in
+// bestofbootcamp, written to via a Google Form intake, never via a
+// credential this browser holds:
 //
-//   1. burnthestage   — staging inbox. createUser() below writes one file per
-//                        signup to pending/ using a GitHub token scoped ONLY
-//                        to this repo. Safe to embed client-side (see
-//                        STAGING_TOKEN) because that scope can't reach
-//                        anything else — not this repo's code, not the real
-//                        user data.
-//   2. bestofbootcamp — the real, live data. A GitHub Actions workflow living
-//                        in burnthestage validates each pending signup
-//                        (well-formed, matches schema, username not taken)
-//                        and promotes valid ones here using a SECOND,
-//                        separate credential that never leaves GitHub Actions.
+//   1. createUser() below submits straight to a Google Form (see
+//      SIGNUP_FORM_URL) — a real hidden-iframe form POST, not fetch, since
+//      Google's response endpoint doesn't send CORS headers. No account, no
+//      credential of any kind touches this browser.
+//   2. Every response becomes a row in the form's linked Google Sheet. A
+//      scheduled GitHub Actions workflow in bestofbootcamp
+//      (automation/signups/promote.js) reads new rows, validates them, and
+//      commits accepted ones into bestofbootcamp/data/users.json, using a
+//      Google service-account credential that lives only as a repo secret —
+//      never exposed here.
 //
-// Full rationale for the split (and alternatives that were rejected, like a
-// single repo-wide token) is in ARCHITECTURE_DECISIONS.md at the repo root.
+// This replaces an earlier design (a fine-grained GitHub PAT embedded in
+// this file) that turned out not to work: GitHub auto-revokes its own
+// PAT-format tokens the moment they're detected in a public repo, no matter
+// how narrowly scoped, so a client-embedded GitHub credential can't stay
+// live here. Full investigation and every alternative considered is in
+// issue #18 and ARCHITECTURE_DECISIONS.md.
 //
 // Practical consequence: createUser() does not create an account instantly.
-// It submits a request; the account exists once the Actions workflow
-// promotes it, typically ~30 seconds to a couple of minutes later.
+// It submits a request; the account exists once the scheduled workflow
+// promotes it — typically within the next few minutes, not instant.
 
 const SESSION_KEY = "bts_session_username";
-
-const STAGING_OWNER = "diyamaxxing";
-const STAGING_REPO = "burnthestage"; // pending signups land here
 
 const DATA_OWNER = "diyamaxxing";
 const DATA_REPO = "bestofbootcamp"; // promoted, live users.json lives here
 
-// Fine-grained PAT scoped to ONLY `contents:write` on burnthestage.
-// Intentionally embedded in client code — see the comment block above for
-// why that's an accepted risk rather than an oversight.
-const STAGING_TOKEN = "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";
+// The signup Google Form's raw submission endpoint and each question's
+// entry ID — see ARCHITECTURE_DECISIONS.md for how these are obtained
+// (Form editor → "Get pre-filled link"). Not secrets: submitting to a
+// public form endpoint needs no auth, these values just say where to send
+// the data and which field is which.
+const SIGNUP_FORM_URL = "PASTE_YOUR_SIGNUP_FORM_ACTION_URL_HERE";
+const SIGNUP_FORM_FIELDS = {
+  username: "PASTE_USERNAME_ENTRY_ID_HERE",
+  pin: "PASTE_PIN_ENTRY_ID_HERE",
+  favoriteMember: "PASTE_FAVORITEMEMBER_ENTRY_ID_HERE",
+  armyType: "PASTE_ARMYTYPE_ENTRY_ID_HERE",
+};
 
-// Must match the validator in burnthestage/scripts/promote.js — if you change
-// one, change the other, or the Actions job will silently reject submissions
-// this form considered valid.
+// Must match the validator in bestofbootcamp/automation/signups/promote.js —
+// if you change one, change the other, or the scheduled job will silently
+// reject submissions this form considered valid.
 const USERNAME_PATTERN = /^[a-zA-Z0-9_]{3,20}$/;
+
+// Submits form data directly to a Google Form's response endpoint via a
+// hidden iframe, so the visitor never leaves this page and no visible
+// redirect happens. A real <form> POST (not fetch/XHR) is required because
+// Google's formResponse endpoint sends no CORS headers — a fetch() call
+// would be blocked from reading the response even though the submission
+// itself would succeed; a form POST targeting a hidden iframe sidesteps
+// that entirely since the browser doesn't apply CORS to form submissions
+// the same way. Resolves once the iframe finishes loading — that's the
+// only signal available (the response page's content is cross-origin and
+// unreadable), so this is "accepted," not "confirmed," same contract every
+// write in this pipeline already has.
+function submitToGoogleForm(actionUrl, fields) {
+  return new Promise((resolve) => {
+    const iframeName = `gform-target-${Date.now()}`;
+    const iframe = document.createElement("iframe");
+    iframe.name = iframeName;
+    iframe.style.display = "none";
+    iframe.addEventListener("load", () => {
+      resolve();
+      iframe.remove();
+    });
+    document.body.appendChild(iframe);
+
+    const form = document.createElement("form");
+    form.action = actionUrl;
+    form.method = "POST";
+    form.target = iframeName;
+    form.style.display = "none";
+
+    Object.entries(fields).forEach(([name, value]) => {
+      const input = document.createElement("input");
+      input.type = "hidden";
+      input.name = name;
+      input.value = value;
+      form.appendChild(input);
+    });
+
+    document.body.appendChild(form);
+    form.submit();
+    form.remove();
+  });
+}
 
 // In-memory only; cleared on page reload. Avoids re-fetching users.json on
 // every findUser() call within a single page view.
@@ -67,19 +118,12 @@ function verifyPin(user, pin) {
   return String(user.pin) === String(pin || "").trim();
 }
 
-// Plain btoa() mangles non-ASCII characters (e.g. accented usernames);
-// this round-trips through encodeURIComponent so UTF-8 content survives
-// being base64-encoded for the GitHub Contents API.
-function utf8ToBase64(str) {
-  return btoa(unescape(encodeURIComponent(str)));
-}
-
-// Submits a signup request to the staging repo's pending/ folder.
-// IMPORTANT: this does not log the user in or confirm the account exists —
-// it only means the request was accepted for review by the Actions
-// pipeline. Callers should tell the user to check back shortly, not treat
-// the resolved promise as "you're now registered." See pages/profile.html's
-// renderPending() for the UI side of that distinction.
+// Submits a signup request to the Google Form. IMPORTANT: this does not log
+// the user in or confirm the account exists — it only means the request was
+// submitted for the scheduled promotion workflow to pick up. Callers should
+// tell the user to check back shortly, not treat the resolved promise as
+// "you're now registered." See pages/profile.html's renderPending() for the
+// UI side of that distinction.
 async function createUser(profile) {
   const username = (profile.username || "").trim();
   if (!USERNAME_PATTERN.test(username)) {
@@ -93,31 +137,12 @@ async function createUser(profile) {
     armyType: profile.armyType || null,
   };
 
-  // Unique filename per submission (not a shared array) so two people
-  // signing up at nearly the same moment never collide on the same file's
-  // version/SHA — each write creates a brand-new file, no conflict possible.
-  const filename = `${username.toLowerCase()}-${Date.now()}.json`;
-
-  const res = await fetch(
-    `https://api.github.com/repos/${STAGING_OWNER}/${STAGING_REPO}/contents/pending/${filename}`,
-    {
-      method: "PUT",
-      headers: {
-        Authorization: `Bearer ${STAGING_TOKEN}`,
-        Accept: "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-      },
-      body: JSON.stringify({
-        message: `Pending signup: ${username}`,
-        content: utf8ToBase64(JSON.stringify(entry, null, 2)),
-      }),
-    }
-  );
-
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.message || "Failed to submit signup request");
-  }
+  await submitToGoogleForm(SIGNUP_FORM_URL, {
+    [SIGNUP_FORM_FIELDS.username]: entry.username,
+    [SIGNUP_FORM_FIELDS.pin]: entry.pin || "",
+    [SIGNUP_FORM_FIELDS.favoriteMember]: entry.favoriteMember || "",
+    [SIGNUP_FORM_FIELDS.armyType]: entry.armyType || "",
+  });
 
   return entry;
 }

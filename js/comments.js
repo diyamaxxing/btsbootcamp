@@ -5,27 +5,27 @@
 // deliberate follow-ups once this core write path is proven live, the same
 // way user profiles (#7) shipped before being hardened (#16).
 //
-// Reuses two staging repos with the same "nothing valuable inside" shape:
-//   - campcomments — a peer of burnthestage (js/auth.js's staging inbox),
-//     not routed through it. createComment() below writes one file per
-//     comment to pending/ using a token scoped ONLY to this repo. A leaked
-//     token can spam that queue but never touch real data.
-//   - bestofbootcamp — already the live, validated home for users.json;
-//     also now holds comments.json, promoted by a GitHub Actions workflow
-//     living in campcomments (see that repo's scripts/promote.js), using a
-//     credential scoped only to bestofbootcamp, never exposed here.
+// Write path mirrors js/auth.js's createUser(): createComment() below
+// submits straight to a Google Form (no account, no credential touching
+// this browser). A scheduled workflow in bestofbootcamp
+// (automation/comments/promote.js) reads new rows, validates them
+// (including cross-checking username against a real profile), and commits
+// accepted ones into bestofbootcamp/data/comments.json.
 //
 // Depends on auth.js being loaded first on the page (DATA_OWNER, DATA_REPO,
-// utf8ToBase64, getSession are reused as globals — classic <script> tags
-// share one global scope, same pattern profile.html already relies on).
+// getSession, submitToGoogleForm are reused as globals — classic <script>
+// tags share one global scope, same pattern profile.html already relies
+// on). Full rationale for this design (and why an earlier client-embedded-
+// PAT approach was abandoned) is in issue #18 and ARCHITECTURE_DECISIONS.md.
 
-const COMMENTS_STAGING_OWNER = "diyamaxxing";
-const COMMENTS_STAGING_REPO = "campcomments"; // pending comments land here
-
-// Fine-grained PAT scoped to ONLY `contents:write` on campcomments.
-// Intentionally embedded in client code, same reasoning as STAGING_TOKEN in
-// auth.js — see ARCHITECTURE_DECISIONS.md.
-const COMMENTS_TOKEN = "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";
+// The comment Google Form's raw submission endpoint and each question's
+// entry ID — same non-secret status as SIGNUP_FORM_URL/FIELDS in auth.js.
+const COMMENT_FORM_URL = "PASTE_YOUR_COMMENT_FORM_ACTION_URL_HERE";
+const COMMENT_FORM_FIELDS = {
+  video_id: "PASTE_VIDEO_ID_ENTRY_ID_HERE",
+  username: "PASTE_USERNAME_ENTRY_ID_HERE",
+  comment: "PASTE_COMMENT_ENTRY_ID_HERE",
+};
 
 const MAX_COMMENT_LENGTH = 2000;
 
@@ -51,9 +51,10 @@ function commentsForVideo(comments, videoId) {
     .sort((a, b) => new Date(b.posted_at) - new Date(a.posted_at));
 }
 
-// Submits a comment to the staging repo's pending/ folder. Same non-instant
-// contract as createUser() in auth.js — this does not mean the comment is
-// live yet, just that it was accepted for the promotion pipeline to pick up.
+// Submits a comment to the Google Form. Same non-instant contract as
+// createUser() in auth.js — this does not mean the comment is live yet,
+// just that it was submitted for the scheduled promotion workflow to pick
+// up.
 async function createComment({ videoId, username, comment }) {
   const trimmed = (comment || "").trim();
   if (!trimmed) {
@@ -70,31 +71,11 @@ async function createComment({ videoId, username, comment }) {
     comment: trimmed,
   };
 
-  // Unique filename per submission, same reasoning as createUser()'s
-  // filename convention — every write creates a brand-new file, no SHA
-  // conflict possible even if two people comment on the same video at once.
-  const filename = `${videoId}-${Date.now()}.json`;
-
-  const res = await fetch(
-    `https://api.github.com/repos/${COMMENTS_STAGING_OWNER}/${COMMENTS_STAGING_REPO}/contents/pending/${filename}`,
-    {
-      method: "PUT",
-      headers: {
-        Authorization: `Bearer ${COMMENTS_TOKEN}`,
-        Accept: "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-      },
-      body: JSON.stringify({
-        message: `Pending comment on ${videoId}`,
-        content: utf8ToBase64(JSON.stringify(entry, null, 2)),
-      }),
-    }
-  );
-
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.message || "Failed to submit comment");
-  }
+  await submitToGoogleForm(COMMENT_FORM_URL, {
+    [COMMENT_FORM_FIELDS.video_id]: entry.video_id,
+    [COMMENT_FORM_FIELDS.username]: entry.username,
+    [COMMENT_FORM_FIELDS.comment]: entry.comment,
+  });
 
   return entry;
 }
