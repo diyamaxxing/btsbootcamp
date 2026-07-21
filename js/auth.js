@@ -34,7 +34,7 @@ const DATA_REPO = "bestofbootcamp"; // promoted, live users.json lives here
 // Fine-grained PAT scoped to ONLY `contents:write` on burnthestage.
 // Intentionally embedded in client code — see the comment block above for
 // why that's an accepted risk rather than an oversight.
-const STAGING_TOKEN = "PASTE_YOUR_BURNTHESTAGE_TOKEN_HERE";
+const STAGING_TOKEN = "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";
 
 // Must match the validator in burnthestage/scripts/promote.js — if you change
 // one, change the other, or the Actions job will silently reject submissions

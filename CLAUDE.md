@@ -179,7 +179,7 @@ All filter state lives in the URL (bookmarkable, shareable):
 | #4 | Era page | Open |
 | #5 | Player improvements | Open |
 | #6 | Bootcamp path | Open |
-| #7 | User profiles | Open — pipeline built, needs end-to-end test (see #16) |
+| #7 | User profiles | Open — pipeline built and verified end-to-end live (see #16) |
 | #8 | Progress tracking | Open — plan is local-first `localStorage`, not yet implemented |
 | #9 | /data page | Open |
 | #10 | /admin page | Open |
@@ -188,7 +188,7 @@ All filter state lives in the URL (bookmarkable, shareable):
 | #13 | User recommendation signals | Open — needs rescoping now that progress is local-first, see `ARCHITECTURE_DECISIONS.md` |
 | #14 | Offline ML recommendation pipeline | Open |
 | #15 | Comments system | Open — likely reuses the staging/promotion pattern from #7 |
-| #16 | Harden and test the user-profile write pipeline | Open — the concrete next step, see body for the checklist |
+| #16 | Harden and test the user-profile write pipeline | Open — live end-to-end signup test done; hardening items (rate limiting, spam handling) remain |
 
 ## Current State (as of 2026-07-21)
 
@@ -207,7 +207,7 @@ All filter state lives in the URL (bookmarkable, shareable):
 - [x] pages/player.html — two-column layout, 10-carousel rec river (added the song carousel), comments shell
 - [x] User profiles (#7) — login + async create-profile via the staging/promotion pipeline, all code written and pushed
 - [x] Hosting — GitHub Pages live at btsbootcamp.com
-- [ ] **Not yet done: paste the `burnthestage`-scoped PAT into `js/auth.js`'s `STAGING_TOKEN` placeholder, then run a real signup end-to-end** — nothing in the write pipeline has been exercised with real traffic yet, only validated via scripts. This is the single most important next step — see issue #16 for the full checklist.
+- [x] Write pipeline verified live end-to-end (#16 core checklist) — real `STAGING_TOKEN` pasted into `js/auth.js`, a real signup submitted through `pages/profile.html`, confirmed written to `burnthestage/pending/`, promoted by the Actions workflow into `bestofbootcamp/data/users.json`, pending file auto-cleaned, and login against the promoted user (PIN check included) confirmed working. Token verified properly scoped (403 on admin-only endpoints like listing repo secrets). Remaining #16 items (rate limiting, spam handling, etc. — see issue body) still open.
 - [ ] Bootcamp path (#6)
 - [ ] Progress tracking (#8) — plan is local-first via `localStorage`, not yet implemented
 - [ ] /data page (#9)
