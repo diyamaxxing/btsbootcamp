@@ -8,10 +8,7 @@
   <link rel="stylesheet" href="css/home.css" />
 </head>
 <body>
-  <nav>
-    <a href="mainmuster.html"><strong>BTS Bootcamp</strong></a>
-    <a href="pages/index.html">Browse →</a>
-  </nav>
+  <nav id="site-nav"></nav>
 
   <main>
     <div id="stats-bar"></div>
@@ -19,7 +16,11 @@
     <div id="content"><p>Loading...</p></div>
   </main>
 
+  <script src="js/auth.js"></script>
+  <script src="js/nav.js"></script>
   <script>
+    renderNav({ depth: "" });
+
     let ALL_VIDEOS = [];
     let ALL_ERAS   = [];
     let ALL_TYPES  = [];

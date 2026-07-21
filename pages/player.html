@@ -9,17 +9,18 @@
   <link rel="stylesheet" href="../css/player.css" />
 </head>
 <body>
-  <nav>
-    <a href="../mainmuster.html">← Home</a>
-  </nav>
+  <nav id="site-nav"></nav>
 
   <main id="app">
     <p>Loading...</p>
   </main>
 
   <script src="../js/auth.js"></script>
+  <script src="../js/nav.js"></script>
   <script src="../js/comments.js"></script>
   <script>
+    renderNav({ depth: "../" });
+
     function ytId(url) {
       const m = url.match(/v=([a-zA-Z0-9_-]{11})/);
       return m ? m[1] : null;

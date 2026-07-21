@@ -100,7 +100,7 @@
   padding: 8px 0;
 }
 
-#type-menu.hidden { display: none; }
+#type-menu.hidden, #member-menu.hidden { display: none; }
 
 .type-option {
   display: flex;

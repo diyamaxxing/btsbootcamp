@@ -22,9 +22,23 @@ nav a {
   font-size: 14px;
 }
 
-/* pushes the last nav link to the right edge — used for e.g. a login link
-   that should sit opposite the logo/home link rather than stack after it */
-nav a:last-child { margin-left: auto; }
+#nav-search-form { flex: 1; max-width: 320px; }
+
+#nav-search-input {
+  width: 100%;
+  padding: 6px 12px;
+  background: #111;
+  border: 1px solid #222;
+  color: #f0f0f0;
+  font-size: 13px;
+}
+
+#nav-search-input::placeholder { color: #555; }
+
+/* pushes the login/username link to the right edge — explicit class rather
+   than nav a:last-child since the search form (not an <a>) can sit after
+   the other nav links but before this one */
+.nav-auth { margin-left: auto; }
 
 main {
   padding: 20px;

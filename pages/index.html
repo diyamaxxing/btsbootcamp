@@ -8,10 +8,7 @@
   <link rel="stylesheet" href="../css/home.css" />
 </head>
 <body>
-  <nav>
-    <a href="../mainmuster.html">← Home</a>
-    <a href="../mainmuster.html"><strong>BTS Bootcamp</strong></a>
-  </nav>
+  <nav id="site-nav"></nav>
 
   <main>
     <div id="era-carousel"></div>
@@ -45,7 +42,11 @@
     <div id="results"><p>Loading...</p></div>
   </main>
 
+  <script src="../js/auth.js"></script>
+  <script src="../js/nav.js"></script>
   <script>
+    renderNav({ depth: "../" });
+
     // ── state (URL-driven — filters are bookmarkable and shareable) ──────────
     const MEMBERS = ["RM", "Jin", "Suga", "J-Hope", "Jimin", "V", "Jungkook"];
 
@@ -56,6 +57,7 @@
       eraTo:    null,
       yearFrom: null,
       yearTo:   null,
+      search:   "",
     };
 
     let ALL_VIDEOS = [];
@@ -73,6 +75,7 @@
       state.eraTo    = p.get("eraTo")    || null;
       state.yearFrom = p.get("yearFrom") || null;
       state.yearTo   = p.get("yearTo")   || null;
+      state.search   = p.get("search")   || "";
     }
 
     // Uses replaceState, not pushState — every checkbox/dropdown change
@@ -86,6 +89,7 @@
       if (state.eraTo)       p.set("eraTo",    state.eraTo);
       if (state.yearFrom)    p.set("yearFrom", state.yearFrom);
       if (state.yearTo)      p.set("yearTo",   state.yearTo);
+      if (state.search)      p.set("search",   state.search);
       const qs = p.toString();
       history.replaceState(null, "", qs ? `?${qs}` : window.location.pathname);
     }
@@ -132,6 +136,15 @@
         if (state.yearFrom && (!year || year < parseInt(state.yearFrom))) return false;
         if (state.yearTo   && (!year || year > parseInt(state.yearTo)))   return false;
 
+        // Matches title and song (not type/tags/era — those already have
+        // their own dedicated filters above).
+        if (state.search) {
+          const term = state.search.toLowerCase();
+          const inTitle = (v.title || "").toLowerCase().includes(term);
+          const inSong  = (v.song  || "").toLowerCase().includes(term);
+          if (!inTitle && !inSong) return false;
+        }
+
         return true;
       }).sort((a, b) => scoreVideo(b) - scoreVideo(a));
     }
@@ -140,7 +153,7 @@
     // would be a wall of cards with no context — results only render once
     // the visitor has picked at least one filter (see renderResults()).
     function isFiltered() {
-      return state.types.size || state.members.size || state.eraFrom || state.eraTo || state.yearFrom || state.yearTo;
+      return state.types.size || state.members.size || state.eraFrom || state.eraTo || state.yearFrom || state.yearTo || state.search;
     }
 
     // ── filter controls ──────────────────────────────────────────────────────
@@ -222,6 +235,7 @@
       if (state.eraTo)    tags.push(`<span class="tag">Era to: ${state.eraTo} <button data-clear="eraTo">×</button></span>`);
       if (state.yearFrom) tags.push(`<span class="tag">From ${state.yearFrom} <button data-clear="yearFrom">×</button></span>`);
       if (state.yearTo)   tags.push(`<span class="tag">To ${state.yearTo} <button data-clear="yearTo">×</button></span>`);
+      if (state.search)   tags.push(`<span class="tag">Search: ${state.search} <button data-clear="search">×</button></span>`);
 
       const el = document.getElementById("active-filters");
       if (tags.length) {
@@ -230,6 +244,7 @@
           state.types.clear();
           state.members.clear();
           state.eraFrom = state.eraTo = state.yearFrom = state.yearTo = null;
+          state.search = "";
           render();
         });
       } else {
@@ -241,6 +256,7 @@
           const k = btn.dataset.clear, val = btn.dataset.value;
           if (k === "type")   state.types.delete(val);
           else if (k === "member") state.members.delete(val);
+          else if (k === "search") state.search = "";
           else state[k] = null;
           render();
         });
@@ -314,6 +330,11 @@
     // so there's no dirty-checking/diffing here.
     function render() {
       pushToURL();
+      // Reflects the current search term back into the nav's own input —
+      // otherwise arriving via ?search= (or the "Clear all" button) would
+      // leave the nav box showing stale/empty text.
+      const navSearchInput = document.getElementById("nav-search-input");
+      if (navSearchInput) navSearchInput.value = state.search;
       renderEraCarousel();
       renderTypeDropdown();
       renderMemberDropdown();
