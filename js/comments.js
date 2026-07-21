@@ -20,11 +20,11 @@
 
 // The comment Google Form's raw submission endpoint and each question's
 // entry ID — same non-secret status as SIGNUP_FORM_URL/FIELDS in auth.js.
-const COMMENT_FORM_URL = "PASTE_YOUR_COMMENT_FORM_ACTION_URL_HERE";
+const COMMENT_FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdbQtsvKMm6g_7tXRF9tLvjxT5bRaRV2AO5mJxRUmuS8hzboA/formResponse";
 const COMMENT_FORM_FIELDS = {
-  video_id: "PASTE_VIDEO_ID_ENTRY_ID_HERE",
-  username: "PASTE_USERNAME_ENTRY_ID_HERE",
-  comment: "PASTE_COMMENT_ENTRY_ID_HERE",
+  video_id: "entry.1052827571",
+  username: "entry.1734509424",
+  comment: "entry.317022676",
 };
 
 const MAX_COMMENT_LENGTH = 2000;

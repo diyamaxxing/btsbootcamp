@@ -36,12 +36,12 @@ const DATA_REPO = "bestofbootcamp"; // promoted, live users.json lives here
 // (Form editor → "Get pre-filled link"). Not secrets: submitting to a
 // public form endpoint needs no auth, these values just say where to send
 // the data and which field is which.
-const SIGNUP_FORM_URL = "PASTE_YOUR_SIGNUP_FORM_ACTION_URL_HERE";
+const SIGNUP_FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSe-M1WSMdaMmtBnkWohK5_P2ADK4qK8vd-yTaPKZtNVjz8x_w/formResponse";
 const SIGNUP_FORM_FIELDS = {
-  username: "PASTE_USERNAME_ENTRY_ID_HERE",
-  pin: "PASTE_PIN_ENTRY_ID_HERE",
-  favoriteMember: "PASTE_FAVORITEMEMBER_ENTRY_ID_HERE",
-  armyType: "PASTE_ARMYTYPE_ENTRY_ID_HERE",
+  username: "entry.1811748859",
+  pin: "entry.1856643483",
+  favoriteMember: "entry.388797197",
+  armyType: "entry.1549988481",
 };
 
 // Must match the validator in bestofbootcamp/automation/signups/promote.js —
@@ -56,20 +56,26 @@ const USERNAME_PATTERN = /^[a-zA-Z0-9_]{3,20}$/;
 // would be blocked from reading the response even though the submission
 // itself would succeed; a form POST targeting a hidden iframe sidesteps
 // that entirely since the browser doesn't apply CORS to form submissions
-// the same way. Resolves once the iframe finishes loading — that's the
-// only signal available (the response page's content is cross-origin and
-// unreadable), so this is "accepted," not "confirmed," same contract every
-// write in this pipeline already has.
+// the same way.
+//
+// Deliberately does NOT resolve on the iframe's "load" event. Appending a
+// src-less iframe fires an immediate load event for its initial blank
+// document, before form.submit() has navigated it anywhere — listening for
+// "load" resolves (and removes the iframe) on that premature blank-page
+// event, not the real submission, which can abort the actual POST entirely
+// if the iframe target no longer exists by the time the navigation would
+// have started. Confirmed live: submissions silently vanished this way.
+// A fixed delay before cleanup sidesteps the race — this pipeline already
+// treats every write as "accepted, not confirmed" (no write here gets a
+// real success signal anyway, since the response page is cross-origin and
+// unreadable regardless), so trading event-based timing for a safe fixed
+// wait costs nothing real.
 function submitToGoogleForm(actionUrl, fields) {
   return new Promise((resolve) => {
     const iframeName = `gform-target-${Date.now()}`;
     const iframe = document.createElement("iframe");
     iframe.name = iframeName;
     iframe.style.display = "none";
-    iframe.addEventListener("load", () => {
-      resolve();
-      iframe.remove();
-    });
     document.body.appendChild(iframe);
 
     const form = document.createElement("form");
@@ -89,6 +95,11 @@ function submitToGoogleForm(actionUrl, fields) {
     document.body.appendChild(form);
     form.submit();
     form.remove();
+
+    setTimeout(() => {
+      iframe.remove();
+      resolve();
+    }, 1500);
   });
 }
 
