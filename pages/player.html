@@ -36,6 +36,9 @@
              Math.log10((v.like_count || 0) + 1) * 0.3;
     }
 
+    // Checked both directions (a's tags vs b's type, and vice versa) so
+    // cross-tagged videos (e.g. Bangtan Bombs tagged "Dance Practice") match
+    // against both real Dance Practice videos and other Bangtan Bombs.
     function typeMatch(a, b) {
       return a.type === b.type ||
              (a.tags || []).includes(b.type) ||
@@ -46,6 +49,9 @@
     // Each pool pulls from what hasn't been shown yet, relevance degrades as you go.
     function buildRecommendations(current, all, eras) {
       const active = all.filter(v => v.status === "active" && v.id !== current.id);
+      // Shared across every pool() call below — once a video appears in one
+      // carousel (e.g. "Up Next"), it's excluded from every carousel after
+      // it, so the same video never shows up twice down the page.
       const shown  = new Set();
 
       function pool(filter, sort, n) {
@@ -62,6 +68,18 @@
       const curIdx   = eraIdx(current.era);
 
       const carousels = [];
+
+      // 0. same song/release, any type or era — the strongest relevance
+      // signal there is. An MV, its dance practice, and a bomb about its
+      // jacket shoot are all clearly related even though they're totally
+      // different content types, so this runs before "Up Next" rather than
+      // being folded into the type/era-based pools below. `song` is
+      // extracted from the quoted title substring in build_videos_json.py —
+      // see CATEGORY_PATTERNS/SONG_PATTERN there for how it's derived.
+      if (current.song) {
+        const sameSong = pool(v => v.song === current.song, byScore, 15);
+        if (sameSong.length) carousels.push({ title: `More '${current.song}'`, videos: sameSong });
+      }
 
       // 1. tightest — same era + same type
       const upNext = pool(v => v.era === current.era && typeMatch(v, current), byScore, 15);
@@ -90,7 +108,9 @@
         if (withMembers.length) carousels.push({ title: label, videos: withMembers });
       }
 
-      // 6. fan favorites — same type sorted by likes
+      // 5/6. fan favorites — same type sorted by likes (numbering matches
+      // the 9-carousel spec in CLAUDE.md, which lists this as both #5 and a
+      // renumbered #6 — only one carousel is actually built here)
       const loved = pool(v => typeMatch(v, current), byLikes, 15);
       if (loved.length) carousels.push({ title: `Fan Favorites: ${current.type}`, videos: loved });
 
@@ -115,6 +135,9 @@
     }
 
     // ── card + carousel ──────────────────────────────────────────────────────
+    // Two different IDs are in play per video: v.id is this catalog's own
+    // identifier (used in player.html's own ?id= link), while ytId(v.url)
+    // extracts the actual YouTube video ID (used only for the thumbnail URL).
     function renderCard(v) {
       const id   = ytId(v.url);
       const meta = [v.era, fmtViews(v.view_count) ? fmtViews(v.view_count) + " views" : ""].filter(Boolean).join(" · ");

@@ -5,12 +5,16 @@ Also auto-assigns era from data/eras.json based on air_date.
 Run BTS is excluded from era assignment (era stays null).
 Safe to re-run any time — always rebuilds from the CSVs.
 
+Also computes two things automatically from title text (see ARCHITECTURE_DECISIONS.md
+for the reasoning): cross-category tags and a shared "song" key for the recommender.
+
 Usage:
     python3 scripts/build_videos_json.py
 """
 
 import csv
 import json
+import re
 from pathlib import Path
 
 RAWS_DIR  = Path(__file__).parent.parent / "data" / "raws"
@@ -27,6 +31,57 @@ CSV_FILES = [
 
 # types excluded from era auto-assignment
 ERA_EXEMPT_TYPES = {"Run BTS"}
+
+# ── cross-category tagging ───────────────────────────────────────────────────
+# Every category is checked against every video with EQUAL weight — there is no
+# "primary" type. A video keeps its source-playlist `type`, but ALSO picks up a
+# tag for any other category whose canonical title convention it structurally
+# matches. Patterns below are derived from how each category's OWN playlist
+# actually titles its videos (verified against the real CSVs), not a loose
+# keyword list — e.g. plain "MV" appears in dozens of Bangtan Bomb titles
+# ("MV Reaction", "MV Shooting") that are NOT music videos, so the pattern
+# requires the full "Official MV" convention real MVs use, which correctly
+# matches none of those. "Dance Practice" without the quoted-song-title prefix
+# would over-match casual bomb titles like "Attack on BTS at dance practice" —
+# the quoted-title requirement is what excludes those.
+CATEGORY_PATTERNS = {
+    "Dance Practice": re.compile(r"['\"‘’][^'\"‘’]+['\"‘’]\s*Dance Practice(?:\s*\([^)]*\))?\s*(?:-\s*BTS.*)?$", re.IGNORECASE),
+    "MV":             re.compile(r"['\"‘’][^'\"‘’]+['\"‘’]\s*Official MV", re.IGNORECASE),
+}
+
+# ── song/release extraction (for the recommender, not for tags) ─────────────
+# Pulls the quoted title substring out of a video's title, e.g. "Butter" out of
+# "BTS 'Butter' Official MV" or "[BANGTAN BOMB] 'Butter' Album Unboxing". Used
+# to link videos about the SAME release across every category — an MV, its
+# dance practice, and a bomb about its jacket shoot all share song="butter"
+# even though their types are completely different. This is deliberately
+# separate from the category tags above: shared song is a recommendation
+# signal (see pages/player.html), not a content-type classification.
+# Known limitation: a song name containing its own apostrophe (e.g. "Killin'
+# It Girl") can truncate the match early if the title uses single quotes as
+# its delimiter — accepted for now since a missed link just means one fewer
+# recommendation, not incorrect data.
+SONG_PATTERN = re.compile(r"['\"‘’]([^'\"‘’]{2,40})['\"‘’]")
+
+
+def extract_song(title):
+    # Not lowercased — official song titles are capitalized consistently
+    # across every playlist in the real data (verified: grouping coverage is
+    # identical with or without normalization), so keeping original case
+    # gives cleaner display (e.g. "Butter") for free.
+    match = SONG_PATTERN.search(title)
+    return match.group(1).strip() if match else None
+
+
+def compute_tags(title, vid_type):
+    """Cross-category tags: every OTHER category whose pattern this title matches."""
+    tags = []
+    for category, pattern in CATEGORY_PATTERNS.items():
+        if category == vid_type:
+            continue  # not a "tag" if it's already the video's own type
+        if pattern.search(title):
+            tags.append(category)
+    return tags
 
 
 def load_eras():
@@ -67,6 +122,7 @@ def coerce_row(row, eras):
 
     vid_type  = row.get("type", "").strip()
     air_date  = row.get("air_date", "").strip() or None
+    title     = row.get("title", "").strip()
 
     # manual era in CSV takes precedence; otherwise auto-assign unless exempt
     manual_era = row.get("era", "").strip() or None
@@ -82,7 +138,7 @@ def coerce_row(row, eras):
 
     return {
         "id":           row.get("id", "").strip(),
-        "title":        row.get("title", "").strip(),
+        "title":        title,
         "upload_date":  row.get("upload_date", "").strip() or None,
         "air_date":     air_date,
         "era":          era,
@@ -92,6 +148,8 @@ def coerce_row(row, eras):
         "url":          row.get("url", "").strip(),
         "thumbnail":    row.get("thumbnail", "").strip(),
         "members":      members,
+        "tags":         compute_tags(title, vid_type),
+        "song":         extract_song(title),
         "subtitles":    subtitles,
         "duration_sec": duration_sec,
         "description":  row.get("description", "").strip() or None,
@@ -129,6 +187,17 @@ def main():
     print("\nEra distribution:")
     for era, count in sorted(era_counts.items(), key=lambda x: (x[0] is None, x[0])):
         print(f"  {era or '(none)'}: {count}")
+
+    # cross-tag summary
+    tagged = [v for v in videos if v["tags"]]
+    print(f"\nCross-tagged videos: {len(tagged)}")
+    for v in tagged:
+        print(f"  {v['id']} ({v['type']}) -> {v['tags']}: {v['title']}")
+
+    # song grouping summary
+    songs = Counter(v["song"] for v in videos if v["song"])
+    linked_songs = {s: c for s, c in songs.items() if c >= 2}
+    print(f"\nSongs linking 2+ videos across the catalog: {len(linked_songs)}")
 
 
 if __name__ == "__main__":

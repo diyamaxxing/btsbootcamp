@@ -5,15 +5,162 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Profile — BTS Bootcamp</title>
   <link rel="stylesheet" href="../css/main.css" />
+  <link rel="stylesheet" href="../css/profile.css" />
 </head>
 <body>
-  <!-- login: username input → fetch from users.json -->
-  <!-- create profile: username, PIN, favorite member, new/veteran ARMY -->
-  <!-- logged-in state: username, stats summary, logout -->
+  <nav>
+    <a href="../mainmuster.html">← Home</a>
+    <a href="../mainmuster.html"><strong>BTS Bootcamp</strong></a>
+  </nav>
 
-  <script src="../js/nav.js"></script>
-  <script src="../js/api.js"></script>
+  <main>
+    <div id="app"><p>Loading...</p></div>
+  </main>
+
   <script src="../js/auth.js"></script>
-  <script src="../js/progress.js"></script>
+  <script>
+    // auth.js provides loadUsers/findUser/verifyPin/createUser/getSession/
+    // setSession/clearSession — this inline script is just the page-specific
+    // rendering glue on top of those.
+
+    const MEMBERS = ["RM", "Jin", "Suga", "J-Hope", "Jimin", "V", "Jungkook"];
+
+    // Entry point: decides which of the three views to show — logged in,
+    // or the login/create panel. Re-run after every state change (login,
+    // logout, submitting a signup) instead of patching the DOM in place.
+    async function render() {
+      const app = document.getElementById("app");
+      const sessionUsername = getSession();
+
+      if (sessionUsername) {
+        const users = await loadUsers();
+        const user = findUser(users, sessionUsername);
+        if (user) {
+          renderLoggedIn(app, user);
+          return;
+        }
+        // Session points at a username that isn't in bestofbootcamp (yet, or
+        // ever — e.g. a signup that was rejected during promotion). Don't
+        // get stuck showing a broken logged-in state; fall back to the
+        // login/create panel.
+        clearSession();
+      }
+
+      renderLoginAndCreate(app);
+    }
+
+    function renderLoggedIn(app, user) {
+      app.innerHTML = `
+        <div id="profile-card">
+          <h1>${user.username}</h1>
+          <p class="profile-meta">${user.armyType === "veteran" ? "Veteran ARMY" : "New ARMY"} · Bias: ${user.favoriteMember || "—"}</p>
+          <p class="profile-meta">Joined ${user.createdAt}</p>
+          <button id="logout-btn">Log out</button>
+        </div>
+      `;
+      document.getElementById("logout-btn").addEventListener("click", () => {
+        clearSession();
+        render();
+      });
+    }
+
+    function renderLoginAndCreate(app) {
+      app.innerHTML = `
+        <div id="auth-panels">
+          <form id="login-form" class="auth-panel">
+            <h2>Log in</h2>
+            <label>Username <input type="text" id="login-username" required /></label>
+            <label>PIN (if set) <input type="password" id="login-pin" inputmode="numeric" /></label>
+            <button type="submit">Log in</button>
+            <p id="login-error" class="auth-error"></p>
+          </form>
+
+          <form id="create-form" class="auth-panel">
+            <h2>Create a profile</h2>
+            <label>Username <input type="text" id="create-username" required /></label>
+            <label>PIN (optional) <input type="password" id="create-pin" inputmode="numeric" /></label>
+            <label>Favorite member
+              <select id="create-member">
+                <option value="">—</option>
+                ${MEMBERS.map(m => `<option value="${m}">${m}</option>`).join("")}
+              </select>
+            </label>
+            <label>ARMY status
+              <select id="create-army-type">
+                <option value="new">New ARMY</option>
+                <option value="veteran">Veteran ARMY</option>
+              </select>
+            </label>
+            <button type="submit">Create profile</button>
+            <p id="create-error" class="auth-error"></p>
+          </form>
+        </div>
+      `;
+
+      document.getElementById("login-form").addEventListener("submit", handleLogin);
+      document.getElementById("create-form").addEventListener("submit", handleCreate);
+    }
+
+    async function handleLogin(e) {
+      e.preventDefault();
+      const username = document.getElementById("login-username").value;
+      const pin = document.getElementById("login-pin").value;
+      const errorEl = document.getElementById("login-error");
+      errorEl.textContent = "";
+
+      const users = await loadUsers();
+      const user = findUser(users, username);
+
+      if (!user) {
+        errorEl.textContent = "No profile with that username.";
+        return;
+      }
+      if (!verifyPin(user, pin)) {
+        errorEl.textContent = "Incorrect PIN.";
+        return;
+      }
+
+      setSession(user.username);
+      render();
+    }
+
+    // createUser() only submits the request to the staging repo — it does
+    // NOT mean the account exists yet (promotion happens async via GitHub
+    // Actions, ~30s-2min later). Don't auto-login here; show the pending
+    // state instead so the user isn't told they're in when they aren't.
+    async function handleCreate(e) {
+      e.preventDefault();
+      const username = document.getElementById("create-username").value;
+      const pin = document.getElementById("create-pin").value;
+      const favoriteMember = document.getElementById("create-member").value;
+      const armyType = document.getElementById("create-army-type").value;
+      const errorEl = document.getElementById("create-error");
+      errorEl.textContent = "";
+
+      try {
+        const user = await createUser({ username, pin, favoriteMember, armyType });
+        renderPending(document.getElementById("app"), user.username);
+      } catch (err) {
+        errorEl.textContent = err.message;
+      }
+    }
+
+    // Shown right after a successful signup submission — deliberately NOT
+    // a logged-in view, since the account doesn't exist in bestofbootcamp
+    // until the Actions workflow promotes it.
+    function renderPending(app, username) {
+      app.innerHTML = `
+        <div id="profile-card">
+          <h1>Request submitted</h1>
+          <p class="profile-meta">Your profile "${username}" is being created — this usually takes a minute or two.</p>
+          <p class="profile-meta">Try logging in shortly.</p>
+          <button id="back-to-login-btn">Back to login</button>
+        </div>
+      `;
+      document.getElementById("back-to-login-btn").addEventListener("click", render);
+    }
+
+    render();
+  </script>
 </body>
 </html>

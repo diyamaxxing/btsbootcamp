@@ -75,6 +75,9 @@
       state.yearTo   = p.get("yearTo")   || null;
     }
 
+    // Uses replaceState, not pushState — every checkbox/dropdown change
+    // updates the URL, and pushState here would fill browser history with
+    // one entry per filter tweak, making back-button navigation useless.
     function pushToURL() {
       const p = new URLSearchParams();
       if (state.types.size)   p.set("types",   [...state.types].join(","));
@@ -96,6 +99,9 @@
       return n.toString();
     }
 
+    // Era range filtering compares INDEX position in eras.json (which is
+    // already chronologically ordered), not era names or dates directly —
+    // this is what lets "From HYYH To Wings" express a contiguous range.
     function eraIndex(name) {
       return ALL_ERAS.findIndex(e => e.name === name);
     }
@@ -112,6 +118,8 @@
 
       return ALL_VIDEOS.filter(v => {
         if (v.status !== "active") return false;
+        // Checks tags as well as type, same reasoning as mainmuster.html's
+        // type carousels — cross-tagged videos need to match either.
         if (state.types.size && !state.types.has(v.type) && !(v.tags || []).some(t => state.types.has(t))) return false;
         if (state.members.size && !(v.members || []).some(m => state.members.has(m))) return false;
 
@@ -128,6 +136,9 @@
       }).sort((a, b) => scoreVideo(b) - scoreVideo(a));
     }
 
+    // With 1,589 videos, rendering the full unfiltered catalog by default
+    // would be a wall of cards with no context — results only render once
+    // the visitor has picked at least one filter (see renderResults()).
     function isFiltered() {
       return state.types.size || state.members.size || state.eraFrom || state.eraTo || state.yearFrom || state.yearTo;
     }
@@ -297,6 +308,10 @@
     }
 
     // ── main render ──────────────────────────────────────────────────────────
+    // Every filter change calls this whole function rather than patching
+    // individual DOM nodes — with this page's data size and interaction
+    // frequency, a full re-render is simpler to reason about and fast enough,
+    // so there's no dirty-checking/diffing here.
     function render() {
       pushToURL();
       renderEraCarousel();

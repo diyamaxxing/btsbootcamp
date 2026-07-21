@@ -1,0 +1,81 @@
+/* profile page */
+
+/* ── login / create-profile panels (logged-out state) ───────────────────── */
+#auth-panels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 28px;
+  max-width: 640px;
+}
+
+.auth-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border: 1px solid #1a1a1a;
+  padding: 20px;
+}
+
+.auth-panel h2 {
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #666;
+}
+
+.auth-panel label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: #999;
+}
+
+.auth-panel input,
+.auth-panel select {
+  padding: 10px 14px;
+  background: #111;
+  border: 1px solid #222;
+  color: #f0f0f0;
+  font-size: 13px;
+}
+
+.auth-panel button {
+  padding: 10px 14px;
+  background: #f0f0f0;
+  color: #0d0d0d;
+  border: none;
+  font-size: 13px;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.auth-error {
+  color: #e05252;
+  font-size: 12px;
+  min-height: 1em;
+}
+
+/* ── logged-in view, and the post-signup "pending" state ─────────────────── */
+/* both renderLoggedIn() and renderPending() in profile.html share this card */
+#profile-card {
+  max-width: 400px;
+  border: 1px solid #1a1a1a;
+  padding: 24px;
+}
+
+.profile-meta {
+  color: #999;
+  font-size: 13px;
+  margin-top: 8px;
+}
+
+#profile-card button {
+  margin-top: 16px;
+  padding: 10px 14px;
+  background: transparent;
+  border: 1px solid #333;
+  color: #f0f0f0;
+  cursor: pointer;
+}

@@ -22,6 +22,8 @@ nav a {
   font-size: 14px;
 }
 
+/* pushes the last nav link to the right edge — used for e.g. a login link
+   that should sit opposite the logo/home link rather than stack after it */
 nav a:last-child { margin-left: auto; }
 
 main {

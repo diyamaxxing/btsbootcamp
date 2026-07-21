@@ -55,6 +55,9 @@
         .slice(0, n);
     }
 
+    // Falls back to scoring the WHOLE catalog if fewer than n videos aired in
+    // the last `days` — otherwise a quiet week would starve the hero section
+    // instead of just serving slightly older (still good) content.
     function recentTopN(videos, n, days = 90) {
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() - days);
@@ -86,6 +89,9 @@
     }
 
     // ── era carousel — navigates to browse page with era pre-set ─────────────
+    // eraFrom and eraTo are set to the SAME era to express "just this one
+    // era" using the browse page's range-filter params, rather than adding
+    // a separate single-era query param it would also need to support.
     function renderEraCarousel() {
       const active = ALL_VIDEOS.filter(v => v.status === "active");
       const pills  = ALL_ERAS.map(era => {
@@ -164,6 +170,9 @@
       const trending  = topN(active, 20);
       const mostLoved = [...active].sort((a, b) => (b.like_count || 0) - (a.like_count || 0)).slice(0, 20);
 
+      // Checks tags as well as type so cross-tagged videos (e.g. the 5
+      // Bangtan Bombs that are structurally dance practices, tagged
+      // ["Dance Practice"]) show up in both pools they legitimately belong to.
       const typeCarousels = ALL_TYPES.map(type => {
         const inType = v => v.type === type || (v.tags || []).includes(type);
         const videos = [...active.filter(inType)]
