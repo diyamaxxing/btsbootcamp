@@ -34,6 +34,7 @@ CSV_FILES = [
     "run_bts.csv",
     "bts_episodes.csv",
     "bts_on_air.csv",
+    "content_index.csv",
 ]
 
 # types excluded from era auto-assignment
@@ -68,6 +69,19 @@ CATEGORY_PATTERNS = {
     # performance) and "Can't Live Without" (GQ-style listicle title), the two
     # false-positive shapes found when checking this against every real title.
     "Live Performance": re.compile(r"(?<!v )\blive\b(?!\s+without)", re.IGNORECASE),
+    # Added for "content_index.csv" (the externally-maintained BTS Content Index
+    # sheet import — see ARCHITECTURE_DECISIONS.md) — derived from a
+    # word-frequency pass over its real titles, same process as the On Air
+    # additions above. "Countdown" specifically excludes the "M Countdown" /
+    # "M!Countdown" broadcast show name (already covered by "Music Show"
+    # above), which is by far the most common false-positive shape.
+    "Interview":         re.compile(r"\binterview\b", re.IGNORECASE),
+    "Behind the Scenes": re.compile(r"\bbehind\b", re.IGNORECASE),
+    "Log":               re.compile(r"\blog\b", re.IGNORECASE),
+    "Teaser":            re.compile(r"\bteaser\b", re.IGNORECASE),
+    "Trailer":           re.compile(r"\btrailer\b", re.IGNORECASE),
+    "Preview":           re.compile(r"\bpreview\b", re.IGNORECASE),
+    "Countdown":         re.compile(r"(?<!m[ !-])\bcountdown\b", re.IGNORECASE),
 }
 
 # ── song/release extraction (for the recommender, not for tags) ─────────────
@@ -94,14 +108,28 @@ def extract_song(title):
     return match.group(1).strip() if match else None
 
 
-def compute_tags(title, vid_type):
-    """Cross-category tags: every OTHER category whose pattern this title matches."""
+def compute_tags(title, vid_type, extra_tags_raw=""):
+    """
+    Cross-category tags: every OTHER category whose pattern this title matches,
+    plus any manually-recorded extra_tags from the CSV (pipe-delimited, same
+    convention as `members`). extra_tags exists for the one case pattern-matching
+    genuinely can't recover: the same video legitimately listed under two
+    different official playlists (e.g. a Bangtan Bomb also in the Dance Practice
+    playlist) with no textual marker in the title distinguishing that fact — see
+    scripts/collapse_duplicate_videos.py and ARCHITECTURE_DECISIONS.md. Every
+    other tag stays fully computed; this is not a general hand-tagging escape
+    hatch.
+    """
     tags = []
     for category, pattern in CATEGORY_PATTERNS.items():
         if category == vid_type:
             continue  # not a "tag" if it's already the video's own type
         if pattern.search(title):
             tags.append(category)
+    for extra in extra_tags_raw.split("|"):
+        extra = extra.strip()
+        if extra and extra != vid_type and extra not in tags:
+            tags.append(extra)
     return tags
 
 
@@ -169,7 +197,7 @@ def coerce_row(row, eras):
         "url":          row.get("url", "").strip(),
         "thumbnail":    row.get("thumbnail", "").strip(),
         "members":      members,
-        "tags":         compute_tags(title, vid_type),
+        "tags":         compute_tags(title, vid_type, row.get("extra_tags", "")),
         "song":         extract_song(title),
         "subtitles":    subtitles,
         "duration_sec": duration_sec,
