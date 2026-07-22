@@ -24,7 +24,7 @@ Content data (videos, eras) lives as flat JSON in this repo. User-generated data
 - Every Form response becomes a row in that form's linked Google Sheet. `bestofbootcamp/automation/signups/promote.js` and `automation/comments/promote.js` — each on its own `schedule`-triggered (every 5 min) + `workflow_dispatch`-enabled GitHub Actions workflow, `schedule` being the only trigger type that needs zero credential from an anonymous caller — read new rows via the Sheets API, using a Google service-account credential that lives *only* as the `GOOGLE_SERVICE_ACCOUNT_KEY` repo secret, never client-exposed.
 - Both scripts validate each row (same rules the old pipeline had — username pattern, comment length, etc.) and write accepted entries straight into `bestofbootcamp`'s own `data/users.json`/`data/comments.json` on disk (already checked out — no cross-repo API calls needed), committing with the workflow's auto-provided `GITHUB_TOKEN`. Comment promotion cross-checks `username` against the same repo's `data/users.json` (now a plain local read) so a comment can't be promoted for a username with no real profile. Handled rows (accepted or rejected) get marked in a `Processed` column so nothing is retried forever.
 - Writes are **not instant** — expect a few minutes (the 5-minute poll floor, plus whatever the run itself takes) for a new signup or comment to actually appear live. `lib/comments.ts`'s local-echo mechanism (`saveLocalComment`/`pendingLocalComments`) shows a person their own just-submitted comment immediately regardless of this delay — see `ARCHITECTURE_DECISIONS.md`.
-- `burnthestage`/`campcomments` (the old staging repos) are unused now — the reason for splitting into separate repos was containing a client-embedded credential's blast radius, and there is no client-embedded credential anymore. Not deleted automatically; that's a separate decision.
+- `burnthestage`/`campcomments` (the old staging repos) are unused now — the reason for splitting into separate repos was containing a client-embedded credential's blast radius, and there is no client-embedded credential anymore. Archived on GitHub (2026-07-22), not deleted — history stays queryable.
 
 Reads (videos/eras): fetch JSON via relative path, same repo.
 Reads (users/comments): fetch JSON via GitHub raw content URL, `bestofbootcamp` repo.
@@ -108,7 +108,7 @@ bestofbootcamp/               # sibling repo (public) — live, validated user-g
     └── promote-comments.yml   # schedule (*/5 min) + workflow_dispatch
 ```
 
-`burnthestage`/`campcomments` (the old staging repos) still exist but are unused as of 2026-07-21 — not part of the file structure above since nothing reads from or writes to them anymore.
+`burnthestage`/`campcomments` (the old staging repos) still exist but archived on GitHub as of 2026-07-22 — not part of the file structure above since nothing reads from or writes to them anymore.
 
 **Important:** no more `mainmuster.html`/`pages/`/root-relative-path conventions — Next.js's own router handles all of that; every route is a clean path (`/browse`, `/player`, etc.) via `next/link`/`next/navigation`, not hand-written relative hrefs. There is no local `data/users.json`, `data/comments.json`, or `data/progress.json` in this repo — see the write-pipeline and local-first decisions above. `public/data/videos.json`/`eras.json` are still fetched client-side at runtime (`fetch("/data/videos.json")`), same pattern as before the migration, just relocated into `public/`.
 
@@ -223,7 +223,7 @@ All filter state lives in the URL (bookmarkable, shareable) via `next/navigation
 
 ## Current State (as of 2026-07-21)
 
-**Live:** https://btsbootcamp.com — GitHub Pages, custom domain verified, HTTPS enforced. First real deploy of the whole site happened 2026-07-21 (commit `50dc0be`). Both repos (`btsbootcamp`, `bestofbootcamp`) are public — `burnthestage`/`campcomments` still exist but are unused as of the Google-Form-intake rework (#18).
+**Live:** https://btsbootcamp.com — GitHub Pages, custom domain verified, HTTPS enforced. First real deploy of the whole site happened 2026-07-21 (commit `50dc0be`). Both repos (`btsbootcamp`, `bestofbootcamp`) are public — `burnthestage`/`campcomments` were unused as of the Google-Form-intake rework (#18) and are now archived (2026-07-22).
 
 **Framework migration (Next.js/TypeScript/Tailwind) is code-complete but not yet actually deployed** — `npm run build` produces a working static export, verified by serving `out/` locally (home, browse filtering, player recommendations + comments fetch, profile forms all confirmed rendering and functioning correctly; see `ARCHITECTURE_DECISIONS.md` for the full verification writeup, including the `trailingSlash` fix this surfaced). **Still needed before it's live:** the repo's Settings → Pages → Source must be switched from "Deploy from a branch" to "GitHub Actions" — a manual step, not done as part of this change since it affects the real deployed custom domain.
 
