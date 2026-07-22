@@ -34,10 +34,24 @@ CSV_FILES = [
     "run_bts.csv",
     "bts_episodes.csv",
     "bts_on_air.csv",
+    "okru_qdeoks.csv",
 ]
 
-# types excluded from era auto-assignment
-ERA_EXEMPT_TYPES = {"Run BTS"}
+# types excluded from era auto-assignment. Run BTS spans years with no clean
+# single air_date; the ok.ru-sourced types below (musters, official DVDs,
+# documentaries, "In the Soop," guest appearances) have the same problem —
+# see ARCHITECTURE_DECISIONS.md's ok.ru-ingestion entry.
+ERA_EXEMPT_TYPES = {
+    "Run BTS",
+    "Fan Meeting",
+    "DVD",
+    "Documentary",
+    "Variety Show",
+    "BTS+/CH+ Content",
+    "Guest Appearance",
+    "Concert",
+    "Drama",
+}
 
 # ── cross-category tagging ───────────────────────────────────────────────────
 # Every category is checked against every video with EQUAL weight — there is no
@@ -167,6 +181,7 @@ def coerce_row(row, eras):
         "series":       row.get("series", "").strip(),
         "episode":      episode,
         "url":          row.get("url", "").strip(),
+        "source":       row.get("source", "").strip() or "youtube",
         "thumbnail":    row.get("thumbnail", "").strip(),
         "members":      members,
         "tags":         compute_tags(title, vid_type),

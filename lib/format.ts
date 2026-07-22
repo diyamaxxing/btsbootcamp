@@ -26,3 +26,25 @@ export function ytId(url: string): string | null {
   const m = url.match(/v=([a-zA-Z0-9_-]{11})/);
   return m ? m[1] : null;
 }
+
+// Extracts the ok.ru numeric video ID from an ok.ru/video/{id} URL.
+export function okruId(url: string): string | null {
+  const m = url.match(/ok\.ru\/video\/(\d+)/);
+  return m ? m[1] : null;
+}
+
+// Player <iframe> embed src for a video's source platform.
+export function embedSrc(video: { url: string; source: "youtube" | "okru" }): string {
+  if (video.source === "okru") {
+    return `https://ok.ru/videoembed/${okruId(video.url)}?autoplay=1`;
+  }
+  return `https://www.youtube.com/embed/${ytId(video.url)}?autoplay=1`;
+}
+
+// Recommendation-carousel thumbnail for a video's source platform — falls
+// back to the stored v.thumbnail when a platform-derived one isn't available.
+export function recThumbnail(video: { url: string; source: "youtube" | "okru"; thumbnail: string }): string {
+  if (video.source === "okru") return video.thumbnail;
+  const ytid = ytId(video.url);
+  return ytid ? `https://img.youtube.com/vi/${ytid}/mqdefault.jpg` : video.thumbnail;
+}

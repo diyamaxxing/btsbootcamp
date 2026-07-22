@@ -11,6 +11,7 @@ export interface Video {
   series: string;
   episode: number | null;
   url: string;
+  source: "youtube" | "okru";
   thumbnail: string;
   members: string[];
   tags: string[];

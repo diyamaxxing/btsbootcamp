@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import type { Comment, Era, PendingComment, Video } from "@/lib/types";
-import { fmtViews, ytId } from "@/lib/format";
+import { fmtViews, embedSrc, recThumbnail } from "@/lib/format";
 import { buildRecommendations } from "@/lib/recommendations";
 import { loadComments, commentsForVideo, pendingLocalComments } from "@/lib/comments";
 import { Carousel } from "@/components/Carousel";
@@ -49,7 +49,6 @@ export function PlayerClient() {
   if (!videos || !eras) return <p>Loading...</p>;
   if (!video) return <p>Video not found: {recordId}</p>;
 
-  const id = ytId(video.url);
   const recs = buildRecommendations(video, videos, eras);
   const metaLine = [video.type, video.era, video.air_date].filter(Boolean).join(" · ");
 
@@ -58,7 +57,7 @@ export function PlayerClient() {
       <div className="mb-5 grid grid-cols-1 gap-7 md:grid-cols-[1fr_320px]">
         <div className="aspect-video min-w-0">
           <iframe
-            src={`https://www.youtube.com/embed/${id}?autoplay=1`}
+            src={embedSrc(video)}
             allow="autoplay; encrypted-media"
             allowFullScreen
             className="block h-full w-full border-0"
@@ -85,10 +84,7 @@ export function PlayerClient() {
 
       <div>
         {recs.map((r) => (
-          <Carousel key={r.title} title={r.title} videos={r.videos} thumbnailFor={(v) => {
-            const ytid = ytId(v.url);
-            return ytid ? `https://img.youtube.com/vi/${ytid}/mqdefault.jpg` : v.thumbnail;
-          }} />
+          <Carousel key={r.title} title={r.title} videos={r.videos} thumbnailFor={recThumbnail} />
         ))}
       </div>
     </>
