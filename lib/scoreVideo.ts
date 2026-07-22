@@ -1,13 +1,14 @@
 import type { Video } from "./types";
+import { computeScore } from "./scoring";
 
-// Phase 1: YouTube signals only. Phase 2 (Issue #13): extend to
-// scoreVideo(v, userProgress). Previously copy-pasted verbatim into 3
-// separate inline <script> blocks (mainmuster.html, pages/index.html,
-// pages/player.html) — collapsed into one shared function here.
+// Thin wrapper over lib/scoring/'s signal registry + combinator — kept as
+// the stable import path every call site already uses. Previously a
+// hardcoded formula, itself collapsed from 3 copy-pasted inline <script>
+// blocks (mainmuster.html, pages/index.html, pages/player.html); see
+// lib/scoring/ for how a second signal (e.g. #13/#14) gets added without
+// touching this function's callers.
 export function scoreVideo(v: Video): number {
-  const views = Math.log10((v.view_count || 0) + 1);
-  const likes = Math.log10((v.like_count || 0) + 1);
-  return views * 0.7 + likes * 0.3;
+  return computeScore(v);
 }
 
 export const byScore = (a: Video, b: Video) => scoreVideo(b) - scoreVideo(a);

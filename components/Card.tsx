@@ -1,5 +1,10 @@
+"use client";
+
 import Link from "next/link";
 import { fmtViews } from "@/lib/format";
+import { logEvent } from "@/lib/analytics/logEvent";
+import { hashUserId } from "@/lib/analytics/userId";
+import { useAuth } from "@/hooks/useAuth";
 import type { Video } from "@/lib/types";
 
 interface CardProps {
@@ -11,14 +16,28 @@ interface CardProps {
 }
 
 export function Card({ video, thumbnail, variant = "rail" }: CardProps) {
+  const { session } = useAuth();
   const meta = [video.era, fmtViews(video.view_count) ? `${fmtViews(video.view_count)} views` : ""]
     .filter(Boolean)
     .join(" · ");
   const src = thumbnail ?? video.thumbnail;
 
+  // Fire-and-forget: never blocks or delays the Link's own navigation. Feeds
+  // bestofbootcamp/automation/engagement/fetch-engagement.js, a GA4-pull
+  // pipeline mirroring the existing trending one — see
+  // ARCHITECTURE_DECISIONS.md.
+  function handleClick() {
+    if (session) {
+      hashUserId(session).then((hashed_uid) => logEvent("video_click", { video_id: video.id, hashed_uid }));
+    } else {
+      logEvent("video_click", { video_id: video.id });
+    }
+  }
+
   return (
     <Link
       href={`/player?id=${encodeURIComponent(video.id)}`}
+      onClick={handleClick}
       className={`block text-ink no-underline ${variant === "rail" ? "w-[200px] flex-none" : ""}`}
     >
       <img

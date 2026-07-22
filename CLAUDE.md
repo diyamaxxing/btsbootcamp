@@ -72,7 +72,7 @@ btsbootcamp/                   # this repo — Next.js app + content data (publi
 │   └── data/page.tsx            # stub (#9) — same
 ├── components/                 # Nav, Carousel, Card, Hero, EraRail, Browse/, Player/
 ├── hooks/                      # useAuth.tsx (Context+hook), useProgress.ts (stub)
-├── lib/                        # types.ts, scoreVideo.ts, recommendations.ts, comments.ts, format.ts, googleForm.ts, github.ts
+├── lib/                        # types.ts, scoreVideo.ts, scoring/, recommendations.ts, trending.ts, analytics/, comments.ts, format.ts, googleForm.ts, github.ts
 ├── public/
 │   ├── data/                    # videos.json/eras.json — moved here from data/, see below
 │   ├── favicon.png
@@ -94,13 +94,20 @@ btsbootcamp/                   # this repo — Next.js app + content data (publi
 bestofbootcamp/               # sibling repo (public) — live, validated user-generated data + automation
 ├── data/users.json            # the REAL, live user profiles — not in this repo
 ├── data/comments.json         # the REAL, live comments — not in this repo
+├── data/trending.json          # video id -> on-site pageviews, GA4-pull, not part of the Form/Sheet pipeline
+├── data/engagement.json        # video id -> on-site video-card clicks, same GA4-pull pattern
 ├── automation/
-│   ├── lib/google-sheets.js   # shared Sheets-API auth (hand-rolled JWT, no npm deps)
-│   ├── signups/promote.js     # reads the signup Sheet, validates, writes data/users.json
-│   └── comments/promote.js    # reads the comment Sheet, validates, writes data/comments.json
+│   ├── lib/google-sheets.js    # shared Sheets-API auth (hand-rolled JWT, no npm deps)
+│   ├── lib/google-analytics.js # shared GA4 Data API auth (same hand-rolled-JWT pattern, read-only scope)
+│   ├── signups/promote.js      # reads the signup Sheet, validates, writes data/users.json
+│   ├── comments/promote.js     # reads the comment Sheet, validates, writes data/comments.json
+│   ├── trending/fetch-trending.js     # GA4 pageviews on /player/?id=X -> data/trending.json
+│   └── engagement/fetch-engagement.js # GA4 "video_click" custom events -> data/engagement.json
 └── .github/workflows/
-    ├── promote-signups.yml    # schedule (*/5 min) + workflow_dispatch
-    └── promote-comments.yml   # schedule (*/5 min) + workflow_dispatch
+    ├── promote-signups.yml     # schedule (*/5 min) + workflow_dispatch
+    ├── promote-comments.yml    # schedule (*/5 min) + workflow_dispatch
+    ├── fetch-trending.yml      # schedule (*/6 hr) + workflow_dispatch
+    └── fetch-engagement.yml    # schedule (*/6 hr) + workflow_dispatch
 ```
 
 `burnthestage`/`campcomments` (the old staging repos) still exist but are unused as of 2026-07-21 — not part of the file structure above since nothing reads from or writes to them anymore.
@@ -156,16 +163,18 @@ Key schema notes:
 
 ## Recommendation System
 
-### Scoring (Phase 1 — YouTube signals only)
-`lib/scoreVideo.ts`:
+### Scoring — `lib/scoring/` signal registry
+`scoreVideo()` (`lib/scoreVideo.ts`) is now a thin wrapper over `computeScore()` (`lib/scoring/index.ts`), which sums weighted signals from a registry (`lib/scoring/signals.ts`):
 ```ts
-export function scoreVideo(v: Video): number {
-  const views = Math.log10((v.view_count || 0) + 1);
-  const likes = Math.log10((v.like_count || 0) + 1);
-  return views * 0.7 + likes * 0.3;
-}
+export const SIGNALS = {
+  views: (v) => Math.log10((v.view_count || 0) + 1),
+  likes: (v) => Math.log10((v.like_count || 0) + 1),
+  engagement: (v, ctx) => Math.log10((ctx.engagement?.[v.id] || 0) + 1),
+} satisfies Record<string, SignalFn>;
+
+export const DEFAULT_PROFILE: ScoringProfile = { views: 0.7, likes: 0.3 }; // byte-identical to the old formula
 ```
-One shared function now — previously copy-pasted verbatim into 3 separate inline `<script>` blocks. Phase 2 (Issue #13): extend with user watch/like signals. Phase 2 ML pipeline (Issue #14): offline Python compute → `data/similar.json`.
+One shared function, one registry — previously `scoreVideo()` was copy-pasted verbatim into 3 separate inline `<script>` blocks, then collapsed to a single hardcoded formula during the Next.js migration. `engagement` is registered but **not** in `DEFAULT_PROFILE` yet — it reads on-site video-clicks from `bestofbootcamp/data/engagement.json` (see `lib/analytics/` below), which is only populated once the architect completes that pipeline's one manual GA4 setup step. Adding a real second signal (user watch/like data once local-first progress tracking exists — #13; the offline ML pipeline — #14) means one new `SIGNALS` entry, not a rewrite. See `ARCHITECTURE_DECISIONS.md` for why signals are written to a comparable scale by convention rather than the combinator doing corpus-wide normalization.
 
 ### Player recommendation river — `lib/recommendations.ts`'s `buildRecommendations()` (9 carousels, deduplicated)
 Corrected count during the migration: the old spec section/changelog said 10 ("added the song carousel"), but the actual `pool()` call sites only ever built 9 — the routes table already had this right, the prose didn't.
@@ -196,6 +205,9 @@ All filter state lives in the URL (bookmarkable, shareable) via `next/navigation
 - No `api.ts` equivalent exists — the old `js/api.js` stub was dropped entirely during the migration; ES modules don't need a placeholder file to reserve a "slot" the way `<script src>` load order did, and it had no concrete future plan to preserve.
 - `hooks/useProgress.ts` — stub only, matches the pre-migration state. Watch tracking, favorites, history (#8) — **local-first**, will read/write `localStorage` only, never a repo file, when built.
 - `components/Nav.tsx` — shared nav bar (rendered by the `(site)` route group's layout, not on every page individually)
+- `lib/scoring/` — **wired up.** `signals.ts` holds a `SIGNALS` registry (`views`, `likes`, `engagement`) plus `ScoringContext`; `index.ts` holds `DEFAULT_PROFILE` (byte-identical to the pre-refactor formula) and `computeScore()`. `lib/scoreVideo.ts`'s `scoreVideo()` is now a thin wrapper over `computeScore()` — every other export there (`byScore`, `byLikes`, `typeMatch`, `topN`, `recentTopN`) is unchanged, so no call site outside `lib/scoring/` needed to change. Adding a signal (e.g. once #14's ML pipeline exists) means one new entry in `SIGNALS` plus, when there's real data to justify it, adding it to a `ScoringProfile` — no combinator or call-site changes. See `ARCHITECTURE_DECISIONS.md` for why signals are written to a comparable scale by convention instead of the combinator doing corpus-wide normalization.
+- `lib/trending.ts` — **wired up**, fetches `bestofbootcamp/data/trending.json` (GA4 pageviews on `/player/?id=X`, refreshed every 6h by `automation/trending/fetch-trending.js`). Consumed directly by the home page's Trending carousel (falls back to `byScore` below a minimum-signal threshold) — not yet routed through `lib/scoring/`'s `engagement` signal, which reads on-site clicks instead of pageviews. Predates and was the model for the engagement pipeline below.
+- `lib/analytics/` — **wired up.** `logEvent.ts` is a generic `gtag('event', ...)` wrapper (GA4 itself already loaded by the `(site)` layout) — new event call sites are a one-line addition, no schema pre-declared. `userId.ts`'s `hashUserId()` SHA-256-hashes a logged-in username via Web Crypto before it's ever attached to an event, so no raw username reaches GA4. Currently called from `components/Card.tsx`'s click handler (`video_click`, covers every video-thumbnail surface — home, browse, and the player's rec river, since `Card` is the one shared component behind all of them), read back by `bestofbootcamp/automation/engagement/fetch-engagement.js` into `data/engagement.json`.
 
 ## Open GitHub Issues
 | # | Title | Status |
@@ -210,8 +222,8 @@ All filter state lives in the URL (bookmarkable, shareable) via `next/navigation
 | #10 | /admin page | Open |
 | #11 | api.js | Closed by the framework migration — the file was dropped entirely, not ported; see "Module Responsibilities" above |
 | #12 | Stats refresh | Open |
-| #13 | User recommendation signals | Open — needs rescoping now that progress is local-first, see `ARCHITECTURE_DECISIONS.md` |
-| #14 | Offline ML recommendation pipeline | Open |
+| #13 | User recommendation signals | Open — needs rescoping now that progress is local-first, see `ARCHITECTURE_DECISIONS.md`. Registry seam (`lib/scoring/`) and a first real on-site signal (`engagement`, pending one manual GA4 step) now exist, ahead of the actual rescoped signal |
+| #14 | Offline ML recommendation pipeline | Open — `lib/scoring/`'s `SIGNALS` registry gives it a slot to land in without a rewrite, once built |
 | #15 | Comments system | Open — V1 (plain per-video comments, profile-required posting) rebuilt on the Google-Form intake (see #18) and verified live end-to-end; interval-threading/replies/bubble-overlay/timeline/likes still to come |
 | #16 | Harden and test the user-profile write pipeline | Open — the pipeline it targeted was replaced (see #18); rate limiting/spam handling still relevant, needs revisiting against the new mechanism |
 | #18 | Write pipeline: client-embedded PATs get auto-revoked (blocks #7, #15) | Resolved and verified live end-to-end — Google Form intake + scheduled Actions promotion in `bestofbootcamp`; ready to close |
