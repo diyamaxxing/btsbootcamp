@@ -7,6 +7,7 @@ import { loadTrending } from "@/lib/trending";
 import { Hero } from "@/components/Hero";
 import { Carousel } from "@/components/Carousel";
 import { EraRail } from "@/components/EraRail";
+import { StatsBar } from "@/components/StatsBar";
 
 // Below this many catalog videos with real GA4 signal, the pull isn't
 // trustworthy yet (fresh deploy, no data promoted, GA4 config stripping
@@ -64,10 +65,7 @@ export default function HomePage() {
 
   return (
     <>
-      {/* #stats-bar in the original was never populated (dead markup, and
-          its CSS selector #stats didn't even match #stats-bar) — ported
-          as a faithful empty placeholder, not a new feature. */}
-      <div />
+      <StatsBar videos={active} />
       <EraRail eras={eras} videos={videos} mode="link" />
       {hero && <Hero video={hero} />}
       <Carousel title="Trending" videos={trending} />

@@ -13,7 +13,7 @@ A fan-built, open-source BTS video hub. Think Netflix-browse meets TikTok-scroll
 ### GitHub as the database — now across two repos
 Content data (videos, eras) lives as flat JSON in this repo. User-generated data (profiles, comments) lives in `bestofbootcamp`. Full rationale, including the design this superseded and why, in `ARCHITECTURE_DECISIONS.md`.
 
-- `data/videos.json` — master content index, every BTS video (2,767 videos) — lives here, in this repo
+- `data/videos.json` — master content index, every BTS video (8,596 videos as of the "BTS Content Index" sheet import + duplicate collapse, see `ARCHITECTURE_DECISIONS.md`) — lives here, in this repo
 - `data/eras.json` — 18 era definitions with start dates; source of truth for era assignment — lives here, in this repo
 - No local `data/comments.json` or `data/users.json` in this repo — both are user-generated data and live in `bestofbootcamp`, not here (see below).
 - **User profiles and comments both live in a separate repo, `bestofbootcamp`**, at `data/users.json` and `data/comments.json` there. `hooks/useAuth.tsx` fetches users via `https://raw.githubusercontent.com/diyamaxxing/bestofbootcamp/main/data/users.json`; `lib/comments.ts` fetches comments the same way from `data/comments.json` in that repo.
@@ -24,7 +24,7 @@ Content data (videos, eras) lives as flat JSON in this repo. User-generated data
 - Every Form response becomes a row in that form's linked Google Sheet. `bestofbootcamp/automation/signups/promote.js` and `automation/comments/promote.js` — each on its own `schedule`-triggered (every 5 min) + `workflow_dispatch`-enabled GitHub Actions workflow, `schedule` being the only trigger type that needs zero credential from an anonymous caller — read new rows via the Sheets API, using a Google service-account credential that lives *only* as the `GOOGLE_SERVICE_ACCOUNT_KEY` repo secret, never client-exposed.
 - Both scripts validate each row (same rules the old pipeline had — username pattern, comment length, etc.) and write accepted entries straight into `bestofbootcamp`'s own `data/users.json`/`data/comments.json` on disk (already checked out — no cross-repo API calls needed), committing with the workflow's auto-provided `GITHUB_TOKEN`. Comment promotion cross-checks `username` against the same repo's `data/users.json` (now a plain local read) so a comment can't be promoted for a username with no real profile. Handled rows (accepted or rejected) get marked in a `Processed` column so nothing is retried forever.
 - Writes are **not instant** — expect a few minutes (the 5-minute poll floor, plus whatever the run itself takes) for a new signup or comment to actually appear live. `lib/comments.ts`'s local-echo mechanism (`saveLocalComment`/`pendingLocalComments`) shows a person their own just-submitted comment immediately regardless of this delay — see `ARCHITECTURE_DECISIONS.md`.
-- `burnthestage`/`campcomments` (the old staging repos) are unused now — the reason for splitting into separate repos was containing a client-embedded credential's blast radius, and there is no client-embedded credential anymore. Not deleted automatically; that's a separate decision.
+- `burnthestage`/`campcomments` (the old staging repos) are unused now — the reason for splitting into separate repos was containing a client-embedded credential's blast radius, and there is no client-embedded credential anymore. Archived on GitHub (2026-07-22), not deleted — history stays queryable.
 
 Reads (videos/eras): fetch JSON via relative path, same repo.
 Reads (users/comments): fetch JSON via GitHub raw content URL, `bestofbootcamp` repo.
@@ -77,13 +77,18 @@ btsbootcamp/                   # this repo — Next.js app + content data (publi
 │   ├── data/                    # videos.json/eras.json — moved here from data/, see below
 │   ├── favicon.png
 │   └── CNAME                    # custom domain — must land in the static export output root
-├── data/raws/                   # source CSVs (6 playlists) — unchanged, still the tagging source of truth
+├── data/raws/                   # source CSVs (7 sources now — 6 playlists + content_index.csv) — tagging source of truth
 ├── scripts/
 │   ├── fetch_playlists.py      # YouTube Data API v3 fetcher — needs YOUTUBE_API_KEY, see .env below
 │   ├── build_videos_json.py    # CSV → public/data/videos.json, era auto-assignment + cross-tagging
 │   ├── enrich_csvs.py          # backfill script (superseded by fetch_playlists)
 │   ├── tag_members.py          # heuristic member tagger — writes into data/raws/*.csv (--apply to write)
-│   └── word_frequency.py       # tokenizes titles, tallies word frequency per type — finds new CATEGORY_PATTERNS candidates
+│   ├── word_frequency.py       # tokenizes titles, tallies word frequency per type — finds new CATEGORY_PATTERNS candidates
+│   ├── inspect_content_index_sheet.py   # scopes the external "BTS Content Index" sheet (row/tab-layout counts, no auth needed)
+│   ├── diff_content_index_sheet.py      # real hyperlinks via Sheets API v4, diffed against data/raws/*.csv for net-new IDs
+│   ├── fetch_content_index_metadata.py  # YouTube Data API backfill for the net-new IDs, staged (not merged) output
+│   ├── build_content_index_csv.py       # staged metadata → data/raws/content_index.csv (type="Archive", dedup by video ID)
+│   └── collapse_duplicate_videos.py     # collapses same-video-two-rows dupes across all raw CSVs (--apply to write); auto-run by fetch_playlists.py
 ├── .env                          # YOUTUBE_API_KEY (gitignored, not committed)
 ├── .github/workflows/deploy.yml  # next build (static export) → GitHub Pages, this repo's first-ever CI
 ├── package.json / tsconfig.json / next.config.ts / postcss.config.mjs / eslint.config.mjs
@@ -110,7 +115,7 @@ bestofbootcamp/               # sibling repo (public) — live, validated user-g
     └── fetch-engagement.yml    # schedule (*/6 hr) + workflow_dispatch
 ```
 
-`burnthestage`/`campcomments` (the old staging repos) still exist but are unused as of 2026-07-21 — not part of the file structure above since nothing reads from or writes to them anymore.
+`burnthestage`/`campcomments` (the old staging repos) still exist but archived on GitHub as of 2026-07-22 — not part of the file structure above since nothing reads from or writes to them anymore.
 
 **Important:** no more `mainmuster.html`/`pages/`/root-relative-path conventions — Next.js's own router handles all of that; every route is a clean path (`/browse`, `/player`, etc.) via `next/link`/`next/navigation`, not hand-written relative hrefs. There is no local `data/users.json`, `data/comments.json`, or `data/progress.json` in this repo — see the write-pipeline and local-first decisions above. `public/data/videos.json`/`eras.json` are still fetched client-side at runtime (`fetch("/data/videos.json")`), same pattern as before the migration, just relocated into `public/`.
 
@@ -142,7 +147,7 @@ bestofbootcamp/               # sibling repo (public) — live, validated user-g
 Key schema notes:
 - `air_date` vs `upload_date`: Run BTS was bulk-uploaded 2022-12-24 from V Live — `air_date` is derived from year in episode title
 - `status`: "active" | "private" — private videos are kept for archive completeness
-- `tags`: cross-category array, **computed automatically** by `scripts/build_videos_json.py` (`CATEGORY_PATTERNS`) — every category is checked with equal weight against every video's title, no category is "primary." Patterns are derived from each category's own real title convention (e.g. Dance Practice requires the quoted-song-title prefix, not just the words "dance practice" anywhere, which is what correctly excludes casual bomb titles like "Attack on BTS at dance practice"). Six categories currently: `Dance Practice`, `MV` (the original two — currently produce exactly the 5 known Bangtan-Bomb-that-are-actually-Dance-Practice videos), plus four added when the "BTS On Air" playlist landed (see below) — `Fancam`, `Music Show`, `Talk Show`, `Live Performance` — derived by running `scripts/word_frequency.py` against the real on-air titles first, not guessed (468 videos cross-tagged total). These tag-only categories are filterable/carousel-able exactly like a `type`: the home page and `components/Browse/BrowseClient.tsx` both build their type list from `type` **and** `tags` combined, not `type` alone — see Browse Filters below. Re-running the build script regenerates all of this from the CSVs — none of it is hand-maintained. Full reasoning in `ARCHITECTURE_DECISIONS.md`.
+- `tags`: cross-category array, **computed automatically** by `scripts/build_videos_json.py` (`CATEGORY_PATTERNS`) — every category is checked with equal weight against every video's title, no category is "primary." Patterns are derived from each category's own real title convention (e.g. Dance Practice requires the quoted-song-title prefix, not just the words "dance practice" anywhere, which is what correctly excludes casual bomb titles like "Attack on BTS at dance practice"). 13 categories currently: `Dance Practice`, `MV` (the original two), four added when the "BTS On Air" playlist landed — `Fancam`, `Music Show`, `Talk Show`, `Live Performance` — and seven added with the "BTS Content Index" sheet import (see `ARCHITECTURE_DECISIONS.md`) — `Interview`, `Behind the Scenes`, `Log`, `Teaser`, `Trailer`, `Preview`, `Countdown`. Every batch was derived by running `scripts/word_frequency.py`-style analysis against the real titles first, not guessed. These tag-only categories are filterable/carousel-able exactly like a `type`: the home page and `components/Browse/BrowseClient.tsx` both build their type list from `type` **and** `tags` combined, not `type` alone — see Browse Filters below. Re-running the build script regenerates all of this from the CSVs — none of it is hand-maintained. Full reasoning in `ARCHITECTURE_DECISIONS.md`.
 - `song`: the quoted title substring extracted from `title` (e.g. "Butter", "뱁새") by `scripts/build_videos_json.py` (`SONG_PATTERN`). Links videos about the same release across every category/type/era — an MV, its dance practice, and a bomb about its jacket shoot all share the same `song` even though they're completely different `type`s. This is a **recommendation signal, not a category** — see the player's recommendation river below. Known limitation: a song name containing its own apostrophe can truncate the extraction early; accepted since a miss just means one fewer recommendation, not bad data.
 - `members`: all 7 for group content; solo/unit content has the correct subset (1,072 videos retagged by `scripts/tag_members.py`). Patterns match each member's stage name, Korean name, and known aliases (Rap Monster/RAPMON for RM, Agust D for Suga) or initials (JM, JK) — verified against every real title in the corpus for false positives before landing. `V` is the one exception: matched as a literal `\bV\b` with an explicit exclusion for "V LIVE" (the old Naver streaming app, not the member) rather than the old indirect-context patterns. **`tag_members.py` writes into `data/raws/*.csv`, not `videos.json` directly** — `videos.json` is fully regenerated from the CSVs by `build_videos_json.py` on every run, so a version that wrote only to `videos.json` had its tagging silently wiped by the next rebuild (this happened once, see git history around the "BTS On Air" playlist addition). Any UI or recommendation logic that filters/recommends by member should also exclude videos where `members.length === 7` — a 7-member array means "untagged group default," not "confirmed content about all 7" — see the browse filter and player's "More with member" carousel for the pattern.
 - `era`: auto-assigned from eras.json date ranges; Run BTS is ERA_EXEMPT
@@ -230,7 +235,7 @@ All filter state lives in the URL (bookmarkable, shareable) via `next/navigation
 
 ## Current State (as of 2026-07-21)
 
-**Live:** https://btsbootcamp.com — GitHub Pages, custom domain verified, HTTPS enforced. First real deploy of the whole site happened 2026-07-21 (commit `50dc0be`). Both repos (`btsbootcamp`, `bestofbootcamp`) are public — `burnthestage`/`campcomments` still exist but are unused as of the Google-Form-intake rework (#18).
+**Live:** https://btsbootcamp.com — GitHub Pages, custom domain verified, HTTPS enforced. First real deploy of the whole site happened 2026-07-21 (commit `50dc0be`). Both repos (`btsbootcamp`, `bestofbootcamp`) are public — `burnthestage`/`campcomments` were unused as of the Google-Form-intake rework (#18) and are now archived (2026-07-22).
 
 **Framework migration (Next.js/TypeScript/Tailwind) is code-complete but not yet actually deployed** — `npm run build` produces a working static export, verified by serving `out/` locally (home, browse filtering, player recommendations + comments fetch, profile forms all confirmed rendering and functioning correctly; see `ARCHITECTURE_DECISIONS.md` for the full verification writeup, including the `trailingSlash` fix this surfaced). **Still needed before it's live:** the repo's Settings → Pages → Source must be switched from "Deploy from a branch" to "GitHub Actions" — a manual step, not done as part of this change since it affects the real deployed custom domain.
 
@@ -238,12 +243,14 @@ All filter state lives in the URL (bookmarkable, shareable) via `next/navigation
 
 - [x] Repo initialized, folder structure scaffolded
 - [x] All HTML page stubs, JS stubs, CSS stubs created
-- [x] videos.json — 2,767 videos, full schema with view/like counts
+- [x] videos.json — 8,596 videos, full schema with view/like counts (grew from 2,767 with the "BTS Content Index" sheet import, net of the 40-video duplicate collapse, see below)
 - [x] eras.json — 18 eras with start dates
 - [x] era auto-assignment in build_videos_json.py
-- [x] Cross-tagging (`tags`) — now **computed automatically** from title text, equal-weighted, no primary category (superseded the old hand-maintained 5-video list; see schema notes above and `ARCHITECTURE_DECISIONS.md`). Six categories as of the "BTS On Air" playlist: `Dance Practice`, `MV`, `Fancam`, `Music Show`, `Talk Show`, `Live Performance`
+- [x] Cross-tagging (`tags`) — now **computed automatically** from title text, equal-weighted, no primary category (superseded the old hand-maintained 5-video list; see schema notes above and `ARCHITECTURE_DECISIONS.md`). 13 categories as of the "BTS Content Index" sheet import: the original `Dance Practice`/`MV`, four from "BTS On Air" (`Fancam`, `Music Show`, `Talk Show`, `Live Performance`), and seven from the sheet import (`Interview`, `Behind the Scenes`, `Log`, `Teaser`, `Trailer`, `Preview`, `Countdown`)
 - [x] Song/release linking (`song` field) — new, feeds a same-release recommendation carousel in the player
 - [x] "BTS On Air" playlist (6th source playlist) — 1,178 videos (fancams, Korean broadcast music-show stages, talk-show appearances, live sets), the most heterogeneous source yet — its real title patterns (via the new `scripts/word_frequency.py`) are what drove the 4 new cross-tag categories above
+- [x] "BTS Content Index" sheet import (7th source, `type="Archive"`) — 5,869 net-new videos pulled from an externally-maintained fan archive sheet (~15k rows scoped, 6,523 diffed as net-new via real Sheets-API hyperlinks, 654 dead/private links dropped after metadata backfill); see `ARCHITECTURE_DECISIONS.md` for the full multi-stage pipeline (`inspect_content_index_sheet.py` → `diff_content_index_sheet.py` → `fetch_content_index_metadata.py` → `build_content_index_csv.py`) and the reasoning for `type="Archive"` + cross-tags over new per-category types.
+- [x] Duplicate video collapse — the 40 pre-existing duplicates found above are now collapsed (`scripts/collapse_duplicate_videos.py`; 32 same-type drops, 8 cross-type merges preserved via a new `extra_tags` CSV column), and `fetch_playlists.py` now dedupes within each playlist fetch and auto-runs the collapse script as its last step, so future data pulls don't reintroduce them. See `ARCHITECTURE_DECISIONS.md`.
 - [x] Member tagging — 1,072 videos retagged from all-7 to solo/unit, patterns now include known aliases/initials; `tag_members.py` rewritten to persist into `data/raws/*.csv` instead of `videos.json` directly (previous version's tags were getting silently wiped by the next rebuild)
 - [x] Favicon — `favicon.png`, linked from every page
 - [x] mainmuster.html — stats bar, era carousel, hero, carousels, era grid
@@ -262,7 +269,8 @@ All filter state lives in the URL (bookmarkable, shareable) via `next/navigation
 - [ ] Comments V2 — 10-second-interval threading, nested replies, floating top-comment bubble overlay, full-timeline scrubbing, local per-browser likes (deferred scope from #15, see `ARCHITECTURE_DECISIONS.md`)
 - [ ] Harden #18's pipeline (rate limiting, spam handling — carried over from #16's original scope, now against the new mechanism)
 - [ ] Decide what to do with the now-unused `burnthestage`/`campcomments` repos (archive vs. delete vs. leave alone)
-- [ ] Cross-tag patterns for Behind/Sketch/Episode categories — not built yet, same casual-vs-formal ambiguity that Dance Practice/MV had needs checking against real titles first, don't guess at a pattern
+- [ ] Cross-tag patterns for Sketch/Episode categories — `Behind` (as "Behind the Scenes") shipped with the sheet import above; `Sketch`/`Episode` still have the same casual-vs-formal ambiguity and need checking against real titles first, don't guess at a pattern
+- [ ] Smoke-test browse filters + player recommendation carousels in the browser against the ~3x larger catalog from the sheet import — not yet done, flagged in PR #28
 
 ## Conventions
 - Query params drive dynamic pages: `?types=`, `?members=`, `?eraFrom=`/`?eraTo=`, `?yearFrom=`/`?yearTo=`, `?search=`, `?id=` — via `next/navigation`'s `useSearchParams`/`router.replace`, not hand-rolled URL parsing

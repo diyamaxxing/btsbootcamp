@@ -29,6 +29,7 @@ CSV_FILES = [
     "run_bts.csv",
     "bts_episodes.csv",
     "bts_on_air.csv",
+    "content_index.csv",
 ]
 
 MEMBERS   = ["RM", "Jin", "Suga", "J-Hope", "Jimin", "V", "Jungkook"]
