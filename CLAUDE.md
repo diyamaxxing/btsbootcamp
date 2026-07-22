@@ -30,11 +30,15 @@ Reads (videos/eras): fetch JSON via relative path, same repo.
 Reads (users/comments): fetch JSON via GitHub raw content URL, `bestofbootcamp` repo.
 Writes (users/comments): never direct — always through the Google Form → scheduled-promotion pipeline above.
 
-### No framework (for now)
-Stack is vanilla HTML/CSS/JS. This is intentional:
-- Architect wants to feel the architecture and data flow before introducing a framework
-- CSS and JS modules are organized to migrate cleanly to React/Next.js later
-- `js/` files map 1:1 to future React hooks/utilities — keep them modular
+### Framework migration: vanilla HTML/CSS/JS → Next.js (static export)
+**Decided 2026-07-21** — see `ARCHITECTURE_DECISIONS.md` for full reasoning. The "no framework" phase is over: the architecture and data flow were felt out first (as intended), and the UI can no longer grow — especially the still-unbuilt Bootcamp path (#6) — without paying real duplication cost on the current base. Migration target was already committed to during the vanilla phase (React/Next.js), so this isn't a fresh framework evaluation.
+
+- Hosting stays GitHub Pages (see Hosting below) — that means Next.js runs in **static export** mode (`output: 'export'`), not full SSR: no server components with runtime fetch, no API routes, no ISR.
+- `data/videos.json`/`eras.json` move from a runtime `fetch()` to a **build-time** read baked into the static output.
+- `bestofbootcamp`'s `data/users.json`/`data/comments.json` stay **runtime, client-side fetches** — that data changes without a rebuild, so it can't be baked in.
+- `js/auth.js`, `js/comments.js`, `js/progress.js` migrate near 1:1 into `useAuth`/`useComments`/`useProgress` hooks; `scoreVideo()` collapses into one shared function instead of being copy-pasted per page; the 10-carousel rec river becomes one parameterized `<Carousel>` component.
+- A GitHub Actions build step (`next build`, static export) is needed before Pages serves the result — new relative to today's plain-file deploy, but Actions is already free/unlimited here.
+- Page-by-page migration order is not yet decided — that's separate follow-up planning, not settled by this entry.
 
 ### Hosting
 - **Live**: GitHub Pages, serving from `btsbootcamp`'s `main` branch, root — not Vercel (see `ARCHITECTURE_DECISIONS.md` for why this changed)
@@ -227,7 +231,8 @@ All filter state lives in the URL (bookmarkable, shareable):
 - [x] Hosting — GitHub Pages live at btsbootcamp.com
 - [x] Comments V1 (#15) — plain per-video comments, profile-required posting, redirect-to-login with auto-post-on-login for logged-out drafts, local-echo mechanism for immediate self-visibility. All code written and pushed; write mechanism just changed (see #18), not yet re-verified live
 - [x] Google-Form-intake write pipeline (#18) — root cause found and documented (GitHub auto-revokes client-embedded PATs in public repos), every alternative considered and closed out, new design implemented and **verified live end-to-end**: `js/auth.js`/`js/comments.js`'s `submitToGoogleForm()`, `bestofbootcamp/automation/{signups,comments}/promote.js` + their scheduled workflows, `automation/lib/google-sheets.js` for hand-rolled Sheets-API auth. Real signup and comment submitted through the actual UI, both landed in their Sheets, both promoted into `bestofbootcamp`'s data files by a manually-triggered workflow run, login against the promoted user confirmed working, and the reject-unknown-username comment path confirmed correctly rejecting without polluting live data or getting retried. Along the way, fixed a real bug in `submitToGoogleForm()` — resolving on the hidden iframe's "load" event was racing against the iframe's own initial blank-page load, silently dropping every submission; now uses a fixed delay instead.
-- [ ] Bootcamp path (#6)
+- [ ] Framework migration: vanilla HTML/CSS/JS → Next.js (static export) — decision made 2026-07-21 (see `ARCHITECTURE_DECISIONS.md`), page-by-page migration order not yet planned, no code moved yet
+- [ ] Bootcamp path (#6) — planned to be built on the Next.js base once the migration lands, not on the current HTML stubs
 - [ ] Progress tracking (#8) — plan is local-first via `localStorage`, not yet implemented
 - [ ] /data page (#9)
 - [ ] /admin page (#10)
@@ -246,7 +251,7 @@ All filter state lives in the URL (bookmarkable, shareable):
 
 ## What NOT To Do
 - Do not introduce a backend or database — the flat JSON + GitHub API pattern is intentional (now across three repos, not a real backend service — see `ARCHITECTURE_DECISIONS.md`)
-- Do not suggest a JS framework until the architect decides to migrate
+- The framework decision is made (see "Framework migration" above) — do not re-litigate React/Next.js vs. Vue/Svelte/Astro, and do not propose moving hosting off GitHub Pages to unlock full SSR; both were explicitly considered and closed out (`ARCHITECTURE_DECISIONS.md`, 2026-07-21 entry)
 - Do not buy the domain until something is deployed to GitHub Pages
 - Do not re-propose a single client-embedded token with repo-wide GitHub access, or a serverless function, for the write path — both were considered and superseded; check `ARCHITECTURE_DECISIONS.md` before suggesting a different write mechanism
 - Do not write progress tracking (#8) to a repo file — it's local-first via `localStorage` by design
