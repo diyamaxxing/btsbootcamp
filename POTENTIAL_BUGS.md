@@ -1,40 +1,71 @@
-# Potential Bugs — Next.js Migration (PR #24)
+# Potential Bugs — Next.js Migration (PR #24) + follow-up UI audit
 
-Things the local verification pass (build + serving `out/` locally + browser
-click-through) **could not actually check**, because they only exist or only
-fail in the real production environment: the real GitHub Actions → Pages
-deploy, the real custom domain, real network access to YouTube/GA4, and the
-real `bestofbootcamp` write pipeline. Local testing confirmed the app
-*renders and fetches correctly* — it could not confirm any of the below.
-
-Check items off as you validate them against the live site. Delete this file
+Things that could not be checked by build/local-serve alone, plus the
+results of a full click-through UI audit done afterward. Check items off as
+you validate the remaining ones against the live site. Delete this file
 once everything below is confirmed (or has its own tracked follow-up).
 
 ---
 
-## Deploy / hosting
+## 🔴 ACTIVE PRODUCTION BUG (found 2026-07-22, tested live with permission) — real signups are silently failing
 
-- [ ] **The GitHub Actions deploy has never actually run.** `.github/workflows/deploy.yml` was written and reviewed but not exercised — only `npm run build` locally. First real run will only happen after Settings → Pages → Source is switched to "GitHub Actions." Watch the first Actions run for failures unrelated to the app code itself (permissions, Node version mismatches, etc.).
-- [ ] **`.nojekyll` was added defensively** (`public/.nojekyll`, empty file, confirmed it lands in `out/`) to stop GitHub's Jekyll processor from ignoring the `_next/` directory (Jekyll ignores any underscore-prefixed path by default, which would silently break every JS/CSS asset). Actions-sourced Pages deploys likely skip Jekyll processing entirely regardless (unlike the older "deploy from branch" method), so this may not be strictly necessary — but costs nothing to keep. If the site loads with broken styling/no interactivity after the first deploy, this is the first thing to double check.
-- [ ] **Custom domain survival through the Actions pipeline.** `public/CNAME` (`btsbootcamp.com`) is confirmed present in `out/CNAME` locally. Never confirmed it survives `actions/upload-pages-artifact` → `actions/deploy-pages` and that the custom domain still resolves after the first Actions-based deploy (vs. the old branch-based deploy that was serving it before).
-- [ ] **`next.config.ts` has no `basePath`/`assetPrefix` set** — correct only if the live site continues to serve from the domain root (`btsbootcamp.com/`), which it should given the CNAME. If Pages ever serves from a project subpath instead (e.g. `username.github.io/btsbootcamp`), every asset path breaks. Confirm the live URL structure matches before/after this deploy.
-- [ ] **CDN propagation lag** for `bestofbootcamp` reads (`raw.githubusercontent.com` caches per-edge up to 5 min) is a known, already-accepted behavior from before this migration — but never re-confirmed against the *new* fetch call sites (`hooks/useAuth.tsx`, `lib/comments.ts`) specifically. Should behave identically (same URLs, same fetch pattern) but wasn't re-verified live.
+**Not a migration regression** — this is a mismatch between the Google Form's own configuration and the site's UI copy, and would affect the old vanilla site identically. Found while testing signup/login live against production.
 
-## Write paths (deliberately untested — would pollute real production data)
+**What's broken:** the signup Google Form (`entry.1811748859` etc.) has `pin`, `favoriteMember`, and `armyType` all marked **required** on Google's side. The site's "Create a profile" form labels PIN as "(optional)" and Favorite member as "—" (blank-selectable), and `createUser()` sends empty strings for whichever of these the visitor leaves blank. Google's server rejects that submission outright (`400`, `data-validation-failed="true"`) — confirmed via direct `curl` against the live form endpoint, isolating the exact cause by varying which fields were populated.
 
-- [ ] **Signup form submission** (`createUser()` in `hooks/useAuth.tsx` → Google Form → `bestofbootcamp`'s scheduled promotion). The Google Form URL/entry IDs were carried over verbatim from the old `js/auth.js`, unchanged — low risk, but the calling code was fully rewritten, so a real test signup (with a disposable test username) is worth doing once, then confirming it promotes and the login step below works.
-- [ ] **Comment submission** (`createComment()` in `lib/comments.ts` → Google Form → `bestofbootcamp`'s scheduled promotion) — same caveat as signups.
-- [ ] **Full login submit** — validated the login form *renders*, but never actually submitted it. A second attempt hit a browser-extension conflict in the verification sandbox unrelated to the app, so this is genuinely unverified, not just "skipped on purpose" like the two above. Test with a real existing username/PIN.
-- [ ] **Logged-out comment draft flow**: type a comment on `/player` while logged out → Enter → redirected to `/profile` with the draft saved (`bts_pending_comment_draft`) → log in → draft auto-posts and redirects back to the video. Ported faithfully from the original logic (`consumeDraftComment()`, the redirect-back in `app/(site)/profile/page.tsx`) but never clicked through end-to-end.
-- [ ] **Session persistence across a real reload** — `hooks/useAuth.tsx`'s `AuthProvider` reads `localStorage` in a `useEffect` on mount (necessary to avoid a hydration mismatch). Never confirmed that a logged-in session actually survives a hard page reload/new tab in practice, only that the code path exists.
+**Why nobody notices:** the client can't read Google's response (cross-origin, no CORS headers — this pipeline has never been able to get a real success/failure signal from the POST, by design, see `ARCHITECTURE_DECISIONS.md`). So the UI shows "Request submitted" regardless of whether Google accepted or rejected it. A real visitor who leaves PIN or Favorite Member blank sees a confident success message and their signup simply never exists — no error, no retry prompt, nothing.
 
-## UI surfaces spot-checked but not exhaustively covered
+**Confirmed via direct testing:**
+- 3 real attempts through the actual production UI/form, all leaving Favorite Member blank → all silently rejected by Google (never appeared as a row the promote workflow could find, confirmed by manually triggering `promote-signups.yml` repeatedly — "No unprocessed rows" every time)
+- A `curl` POST with only `username` filled → `400`
+- A `curl` POST with `username` + `pin` filled, `favoriteMember` blank → `400`
+- A `curl` POST with **all four fields non-empty** → `200`, and the subsequent `promote-signups.yml` run picked it up and promoted it ("Promoted 1 user(s)."); login then worked correctly end-to-end (session set, profile card rendered, survived a hard reload)
 
-- [ ] Only the era-pill filter and one video's recommendation river were click-tested. **Not tested**: the Type dropdown checkbox menu, the Member dropdown checkbox menu, the Era/Year range `<select>` pairs, individual active-filter-tag removal buttons, and "Clear all."
-- [ ] Only one recommendation carousel ("More '[Song]'") was confirmed rendering for the one test video used. The other 8 pools (Up Next, More from [Era], More [Type], More with [member], Fan Favorites, Nearby Eras, Most Loved, Trending) exist in `lib/recommendations.ts` and were verified by code review, not by finding a video that actually populates all of them at once.
-- [ ] **Search** (nav search box → `/browse?search=X`) — never clicked through.
-- [ ] **Mobile/responsive layout** — the player's two-column-to-one-column breakpoint and the comments sidebar's mobile `max-height` were ported via Tailwind `md:` classes but never checked at a narrow viewport.
-- [ ] **Real YouTube iframe playback** — the verification sandbox has no external network access to `youtube.com`/`img.youtube.com`, so the player's actual embed (autoplay, controls) and every card's real thumbnail image were never visually confirmed, only structurally (correct `src` URLs, correct DOM).
-- [ ] **GA4 analytics** — `next/script` tags are wired up with the same Measurement ID as before, but never confirmed a real pageview/event actually reaches the GA4 dashboard from the new code.
-- [ ] Stub routes `/bootcamp`, `/collection`, `/era` were confirmed to return `200` and to render the shared nav (by code review), but weren't individually opened and screenshotted.
-- [ ] Only tested in one Chrome instance — no cross-browser check.
+**Fix options (architect's call, not made here):**
+1. In the Google Form itself, mark `pin`, `favoriteMember`, `armyType` as **not required** — matches the site's actual intent, one settings change in the Form editor, no code change.
+2. Or change the site's create-profile form to require all fields — worse UX, contradicts the "(optional)" labels already shown.
+3. Or have `createUser()` send a placeholder non-empty value (e.g. `"none"`) for blank optional fields — a workaround, adds a data-cleaning burden on the read side (`favoriteMember === "none"` would need treating as unset everywhere it's displayed).
+
+Option 1 is almost certainly the right fix and takes less time than reading this paragraph.
+
+**Test artifacts left in production, pending your call on cleanup:**
+- `bestofbootcamp/data/users.json` now has a real test user, `claudetest_allfields` (PIN `1234`, bias RM, New ARMY) — created to prove the pipeline works when all fields are filled, then used to confirm login. Let me know if you want it removed.
+- The comment-form test (`bomb-847`, username `claudetest`) was correctly **rejected** by promotion (username doesn't match a real profile) — nothing landed in `comments.json`, no cleanup needed there.
+
+---
+
+## Fixed during the post-deploy UI audit (2026-07-22)
+
+- [x] **Browse page: Type and Member filter dropdowns didn't open at all** (reported live, reproduced, fixed — see PR #25). Root cause: the outside-click-to-close listener was attached directly to `document`, racing with React's own event delegation (Next.js hydrates onto `document` directly) — `stopPropagation()` inside the button's handler doesn't block a *separate* listener already registered on the same node, so the menu closed in the same tick it opened. Fixed with a ref-based containment check instead. Also fixed `z-100` on the dropdown menus (not a real Tailwind utility — z-index only has a fixed `0/10/20/30/40/50/auto` scale) → `z-[100]`.
+
+## Confirmed working during the audit (previously untested)
+
+- [x] Type dropdown checkbox menu — opens, checking a box stays open, filters apply, badge count updates
+- [x] Member dropdown checkbox menu — same, plus confirmed mutual exclusion with the Type menu
+- [x] Era `<select>` From/To range filter — confirmed via direct DOM event dispatch (native `<select>` elements aren't reliably clickable via coordinate-based automation); correct era-index range filtering confirmed (e.g. "Dark & Wild" onward → 2,232 videos)
+- [x] Year `<select>` From/To range filter — same method, confirmed (2020–2021 → 451 videos)
+- [x] Active-filter tag removal (`×` buttons) and "Clear all" — confirmed
+- [x] Nav search box → `/browse?search=X` — confirmed (searched "Butter" → 52 results, correct tag shown)
+- [x] All 8 applicable recommendation carousels on a real multi-pool test video (`bomb-847`, a Jungkook solo Bangtan Bomb): Up Next, More from [Era], More [Type], More with [member], Fan Favorites, Nearby Eras, Most Loved, Trending. (9th pool, "More '[Song]'", correctly didn't render since no other video shares that song text — expected, not a bug.)
+- [x] Logged-out comment draft flow: typed a comment on `/player` while logged out, pressed Enter, confirmed redirect to `/profile` **and** confirmed via `localStorage` that `bts_pending_comment_draft` was saved with the correct `videoId`/`comment` — did not complete the loop by actually logging in (see below)
+- [x] All 5 stub routes individually opened and screenshotted: `/bootcamp`, `/collection`, `/era` render the shared nav (empty content below, as intended); `/admin`, `/data` render with no nav at all, confirming the route-group split works
+- [x] Real network access to YouTube thumbnails confirmed available in at least one test session (images loaded correctly on `/browse` and `/player`) — but see below, this wasn't consistent across every session and full iframe playback still isn't confirmed
+- [x] Console swept for errors across the whole audit — none found
+
+## Confirmed working live in production (2026-07-22, tested with explicit permission)
+
+- [x] **Signup form submission** — confirmed working end-to-end, but only once all 4 fields are non-empty (see the active bug above). Real submission → real Google Sheet row → `promote-signups.yml` (manually triggered; the `*/5 min` schedule itself had a ~2 hour real-world gap between scheduled runs, so don't rely on the cron cadence being anywhere near 5 minutes in practice) → promoted into `bestofbootcamp/data/users.json`.
+- [x] **Full login submit** — confirmed working against the real promoted user (`claudetest_allfields`): correct profile card, correct nav username, `Log out` present.
+- [x] **Session persistence across a real reload** — confirmed: logged in, hard-navigated to `/profile` again, session held.
+- [x] **Comment form submission** — confirmed reaching Google successfully (`200`) via direct testing; correctly **rejected** at promotion time since the test used a non-registered username, proving the username cross-check in `promote-comments.js` still works.
+
+## Still not tested
+
+- [ ] **The GitHub Actions deploy for PR #25** (the dropdown fix) — confirmed successful separately from this session's other checks.
+- [ ] **`.nojekyll`** — added defensively, still not confirmed necessary either way.
+- [ ] **CDN propagation lag** for `bestofbootcamp` reads — behavior assumed unchanged, not re-verified live.
+- [ ] **Completing the draft-comment-then-login loop** — confirmed the draft saves and the redirect happens (previous audit pass); did not separately re-confirm the auto-post-and-redirect-back behavior after logging in, since the login test used a fresh session without a pending draft.
+- [ ] **Mobile/responsive layout** — attempted during the audit via the browser tool's window-resize function, but the screenshot tool kept capturing at the original desktop resolution regardless, so this genuinely could not be checked from this environment. Needs a real device or browser dev-tools check.
+- [ ] **Real YouTube iframe playback** (autoplay, controls, not just the thumbnail loading) — still not visually confirmed.
+- [ ] **GA4 analytics** — still not confirmed to reach the real dashboard.
+- [ ] **Cross-browser** — only ever tested in one Chrome instance.
