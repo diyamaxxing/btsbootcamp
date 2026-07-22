@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens extracted from the pre-Tailwind CSS (css/main.css,
+ * home.css, player.css, profile.css). Those files used the same handful of
+ * hex literals by convention across every file, never a shared variable —
+ * this @theme block is the first time that palette is declared once. See
+ * ARCHITECTURE_DECISIONS.md, the Tailwind-adoption entry, for why.
+ */
+@theme {
+  --color-base: #0d0d0d; /* body background */
+  --color-surface: #111111; /* panels, inputs, dropdown menus */
+  --color-elevated: #1a1a1a; /* hover/active surface, tag chips */
+
+  --color-line: #222222; /* default hairline border */
+  --color-line-soft: #2a2a2a; /* era-pill border */
+  --color-line-strong: #333333; /* dropdown/select border */
+  --color-line-hover: #444444; /* hover border, tag border */
+
+  --color-ink: #f0f0f0; /* primary text */
+  --color-ink-dim: #cccccc; /* secondary text (comment body, type options) */
+  --color-muted: #999999; /* form labels */
+  --color-muted-2: #888888; /* meta text, tag button */
+  --color-faint: #666666; /* stat labels, sidebar headings */
+  --color-faint-2: #555555; /* card meta, placeholders */
+  --color-ghost: #444444; /* era-year, range-group separators */
+
+  --color-danger: #e05252; /* auth/comment error text */
+  --color-pending: #776b3d; /* "Posting…" comment timestamp */
+}
+
+body {
+  background: var(--color-base);
+  color: var(--color-ink);
+}
+
+/* Thin custom scrollbars — three slightly different widths in the original
+ * CSS (.rail, #era-rail, #comments-col), preserved exactly rather than
+ * unified, since Tailwind v4 has no scrollbar utilities out of the box. */
+.scroll-thin-rail::-webkit-scrollbar {
+  height: 4px;
+}
+.scroll-thin-rail::-webkit-scrollbar-thumb {
+  background: #333;
+}
+.scroll-thin-era::-webkit-scrollbar {
+  height: 3px;
+}
+.scroll-thin-era::-webkit-scrollbar-thumb {
+  background: #333;
+}
+.scroll-thin-comments::-webkit-scrollbar {
+  width: 3px;
+}
+.scroll-thin-comments::-webkit-scrollbar-thumb {
+  background: #333;
+}

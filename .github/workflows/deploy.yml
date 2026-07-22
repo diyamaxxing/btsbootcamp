@@ -1,0 +1,49 @@
+name: Deploy to GitHub Pages
+
+# This repo has no CI/CD before this workflow — introduced as part of the
+# Next.js migration (see ARCHITECTURE_DECISIONS.md, framework-migration
+# entry). Requires repo Settings → Pages → Source = "GitHub Actions" (a
+# manual, one-time change — not done by this workflow itself).
+#
+# Deliberately does NOT run scripts/build_videos_json.py here — that stays
+# a human-run, occasional step against data/raws/*.csv, same as
+# fetch_playlists.py and tag_members.py. public/data/videos.json is
+# committed, already-built input, not regenerated on every push.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: out
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
