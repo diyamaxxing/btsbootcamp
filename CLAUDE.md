@@ -13,7 +13,7 @@ A fan-built, open-source BTS video hub. Think Netflix-browse meets TikTok-scroll
 ### GitHub as the database — now across two repos
 Content data (videos, eras) lives as flat JSON in this repo. User-generated data (profiles, comments) lives in `bestofbootcamp`. Full rationale, including the design this superseded and why, in `ARCHITECTURE_DECISIONS.md`.
 
-- `data/videos.json` — master content index, every BTS video (8,636 videos as of the "BTS Content Index" sheet import, see `ARCHITECTURE_DECISIONS.md`) — lives here, in this repo
+- `data/videos.json` — master content index, every BTS video (8,596 videos as of the "BTS Content Index" sheet import + duplicate collapse, see `ARCHITECTURE_DECISIONS.md`) — lives here, in this repo
 - `data/eras.json` — 18 era definitions with start dates; source of truth for era assignment — lives here, in this repo
 - No local `data/comments.json` or `data/users.json` in this repo — both are user-generated data and live in `bestofbootcamp`, not here (see below).
 - **User profiles and comments both live in a separate repo, `bestofbootcamp`**, at `data/users.json` and `data/comments.json` there. `hooks/useAuth.tsx` fetches users via `https://raw.githubusercontent.com/diyamaxxing/bestofbootcamp/main/data/users.json`; `lib/comments.ts` fetches comments the same way from `data/comments.json` in that repo.
@@ -87,7 +87,8 @@ btsbootcamp/                   # this repo — Next.js app + content data (publi
 │   ├── inspect_content_index_sheet.py   # scopes the external "BTS Content Index" sheet (row/tab-layout counts, no auth needed)
 │   ├── diff_content_index_sheet.py      # real hyperlinks via Sheets API v4, diffed against data/raws/*.csv for net-new IDs
 │   ├── fetch_content_index_metadata.py  # YouTube Data API backfill for the net-new IDs, staged (not merged) output
-│   └── build_content_index_csv.py       # staged metadata → data/raws/content_index.csv (type="Archive", dedup by video ID)
+│   ├── build_content_index_csv.py       # staged metadata → data/raws/content_index.csv (type="Archive", dedup by video ID)
+│   └── collapse_duplicate_videos.py     # collapses same-video-two-rows dupes across all raw CSVs (--apply to write); auto-run by fetch_playlists.py
 ├── .env                          # YOUTUBE_API_KEY (gitignored, not committed)
 ├── .github/workflows/deploy.yml  # next build (static export) → GitHub Pages, this repo's first-ever CI
 ├── package.json / tsconfig.json / next.config.ts / postcss.config.mjs / eslint.config.mjs
@@ -230,13 +231,14 @@ All filter state lives in the URL (bookmarkable, shareable) via `next/navigation
 
 - [x] Repo initialized, folder structure scaffolded
 - [x] All HTML page stubs, JS stubs, CSS stubs created
-- [x] videos.json — 8,636 videos, full schema with view/like counts (grew from 2,767 with the "BTS Content Index" sheet import, see below)
+- [x] videos.json — 8,596 videos, full schema with view/like counts (grew from 2,767 with the "BTS Content Index" sheet import, net of the 40-video duplicate collapse, see below)
 - [x] eras.json — 18 eras with start dates
 - [x] era auto-assignment in build_videos_json.py
 - [x] Cross-tagging (`tags`) — now **computed automatically** from title text, equal-weighted, no primary category (superseded the old hand-maintained 5-video list; see schema notes above and `ARCHITECTURE_DECISIONS.md`). 13 categories as of the "BTS Content Index" sheet import: the original `Dance Practice`/`MV`, four from "BTS On Air" (`Fancam`, `Music Show`, `Talk Show`, `Live Performance`), and seven from the sheet import (`Interview`, `Behind the Scenes`, `Log`, `Teaser`, `Trailer`, `Preview`, `Countdown`)
 - [x] Song/release linking (`song` field) — new, feeds a same-release recommendation carousel in the player
 - [x] "BTS On Air" playlist (6th source playlist) — 1,178 videos (fancams, Korean broadcast music-show stages, talk-show appearances, live sets), the most heterogeneous source yet — its real title patterns (via the new `scripts/word_frequency.py`) are what drove the 4 new cross-tag categories above
-- [x] "BTS Content Index" sheet import (7th source, `type="Archive"`) — 5,869 net-new videos pulled from an externally-maintained fan archive sheet (~15k rows scoped, 6,523 diffed as net-new via real Sheets-API hyperlinks, 654 dead/private links dropped after metadata backfill); see `ARCHITECTURE_DECISIONS.md` for the full multi-stage pipeline (`inspect_content_index_sheet.py` → `diff_content_index_sheet.py` → `fetch_content_index_metadata.py` → `build_content_index_csv.py`) and the reasoning for `type="Archive"` + cross-tags over new per-category types. Found (not fixed) 40 pre-existing duplicate videos among the original six CSVs, unrelated to this import.
+- [x] "BTS Content Index" sheet import (7th source, `type="Archive"`) — 5,869 net-new videos pulled from an externally-maintained fan archive sheet (~15k rows scoped, 6,523 diffed as net-new via real Sheets-API hyperlinks, 654 dead/private links dropped after metadata backfill); see `ARCHITECTURE_DECISIONS.md` for the full multi-stage pipeline (`inspect_content_index_sheet.py` → `diff_content_index_sheet.py` → `fetch_content_index_metadata.py` → `build_content_index_csv.py`) and the reasoning for `type="Archive"` + cross-tags over new per-category types.
+- [x] Duplicate video collapse — the 40 pre-existing duplicates found above are now collapsed (`scripts/collapse_duplicate_videos.py`; 32 same-type drops, 8 cross-type merges preserved via a new `extra_tags` CSV column), and `fetch_playlists.py` now dedupes within each playlist fetch and auto-runs the collapse script as its last step, so future data pulls don't reintroduce them. See `ARCHITECTURE_DECISIONS.md`.
 - [x] Member tagging — 1,072 videos retagged from all-7 to solo/unit, patterns now include known aliases/initials; `tag_members.py` rewritten to persist into `data/raws/*.csv` instead of `videos.json` directly (previous version's tags were getting silently wiped by the next rebuild)
 - [x] Favicon — `favicon.png`, linked from every page
 - [x] mainmuster.html — stats bar, era carousel, hero, carousels, era grid

@@ -191,4 +191,22 @@ Each entry: what was decided, what alternatives were considered and rejected, an
 - `Log` ended up the single largest new tag at 198 matches, ahead of `Interview` (193) and `Behind the Scenes` (192).
 - A `Message` category was considered and dropped — real title samples were too heterogeneous (mixing show segment names, brand-column titles, and genuine greetings) to trust as a distinguishing pattern, following the same "leave a category untagged rather than guess" rule the cross-tagging decision already established for `Sketch`/`Episode`.
 
-**Known limitation, found but not fixed here:** merging in `content_index.csv` surfaced 40 pre-existing duplicate videos (same YouTube ID, two different catalog rows) among the *original* six CSVs — e.g. a Bangtan Bomb also present in the Dance Practice playlist. Confirmed none of the 40 touch the new `Archive` import. Left alone since it predates this change and is a separate cleanup, not something to fold into an unrelated PR.
+**Known limitation, found but not fixed here — since fixed, see below:** merging in `content_index.csv` surfaced 40 pre-existing duplicate videos (same YouTube ID, two different catalog rows) among the *original* six CSVs — e.g. a Bangtan Bomb also present in the Dance Practice playlist. Confirmed none of the 40 touch the new `Archive` import. Left alone in this entry since it predates this change; collapsed in a same-day follow-up, see immediately below.
+
+---
+
+## 2026-07-22 — Collapse duplicate videos into one entry, and make it self-maintaining for future pulls
+
+**Decision:** the 40 duplicates found above split into two genuinely different causes, so they got two different fixes rather than one blanket "delete the second row":
+
+- **32 same-type duplicates** — the exact same video listed *twice within one official YouTube playlist* (identical title/type/view/like counts, adjacent playlist positions). Zero information loss either way: `scripts/collapse_duplicate_videos.py` just drops the later row.
+- **8 cross-type duplicates** — the exact same video legitimately listed under *two different* official playlists (e.g. a Bangtan Bomb also in the Dance Practice playlist), with no textual marker in the title for `build_videos_json.py`'s pattern-based tagging to recover on its own. Dropping either row outright would silently lose real category information. Instead: the row from whichever CSV comes first in `CSV_FILES` processing order is kept as canonical `type`, and the other type is written into a new `extra_tags` CSV column on that row — merged into the computed `tags` array at build time (`compute_tags()` now takes an optional `extra_tags_raw` param). This is the one place `tags` isn't purely title-derived, and it's deliberately narrow: `extra_tags` exists only to record "this exact video was also officially filed under playlist X," a fact no title pattern could ever recover, not a general hand-tagging escape hatch.
+
+**Why collapse instead of leaving both rows filterable-but-separate:** two catalog rows for one video means it can appear twice in browse results and twice in the same recommendation carousel — worse UX than the duplicate-listing fact being invisible. Preserving the second type as a tag (rather than just deleting it) keeps that fact discoverable without the UX cost.
+
+**Made self-maintaining, per architect request, rather than a one-time manual fix:**
+- `fetch_playlists.py`'s `fetch_all_playlist_items()` now dedupes by `video_id` within a single playlist fetch, so a live YouTube playlist that lists the same video twice (the 32-group cause) can't reintroduce those duplicates on a future refetch.
+- `fetch_playlists.py`'s `main()` now runs `collapse_duplicate_videos.py` automatically as its last step. This catches the cross-playlist case (the 8-group cause) too, which per-playlist dedup structurally can't see — each playlist is still fetched independently, so the same video landing in two different output CSVs is only detectable after all of them exist on disk.
+- `fetch_playlists.py`'s existing "preserve manually-filled fields from existing CSV" logic (already used for `era`/`members`/`subtitles`/`description`) now also preserves `extra_tags` across a refetch, so re-running the fetcher doesn't wipe a previously-recorded cross-playlist tag.
+
+**Result:** catalog goes from 8,636 to 8,596 videos (40 fewer rows, zero fewer real videos), 0 duplicate video-id groups remaining — verified directly against `public/data/videos.json` post-rebuild, not assumed from the script's own success message.
