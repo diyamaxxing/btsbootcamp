@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { MEMBERS, type Era, type Video } from "@/lib/types";
 import { byScore } from "@/lib/scoreVideo";
@@ -58,6 +58,7 @@ export function BrowseClient() {
   // pattern.
   const [state, setState] = useState<FilterState>(() => parseParams(searchParams));
   const [openMenu, setOpenMenu] = useState<"type" | "member" | null>(null);
+  const dropdownsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     Promise.all([fetch("/data/videos.json").then((r) => r.json()), fetch("/data/eras.json").then((r) => r.json())])
@@ -85,9 +86,19 @@ export function BrowseClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
 
+  // Closes the open dropdown on an outside click. Deliberately a containment
+  // check against a ref, not React's stopPropagation() — Next.js hydrates
+  // straight onto `document`, so React's own delegated click handling and
+  // this listener both live on the same node. stopPropagation() only blocks
+  // propagation to *other* nodes, not other listeners already registered on
+  // the same node, so it can't be used to suppress this listener from a
+  // handler inside the dropdown — it would fire (and close the menu) in the
+  // same tick it was just opened, before ever showing anything.
   useEffect(() => {
-    function closeMenus() {
-      setOpenMenu(null);
+    function closeMenus(e: MouseEvent) {
+      if (dropdownsRef.current && !dropdownsRef.current.contains(e.target as Node)) {
+        setOpenMenu(null);
+      }
     }
     document.addEventListener("click", closeMenus);
     return () => document.removeEventListener("click", closeMenus);
@@ -186,8 +197,8 @@ export function BrowseClient() {
     <>
       <EraRail eras={eras} videos={videos} mode="toggle" selectedEra={state.eraFrom === state.eraTo ? state.eraFrom : null} onToggle={toggleEra} />
 
-      <div className="mb-4 flex flex-wrap items-center gap-4">
-        <div className="relative" onClick={(e) => e.stopPropagation()}>
+      <div ref={dropdownsRef} className="mb-4 flex flex-wrap items-center gap-4">
+        <div className="relative">
           <button
             type="button"
             onClick={() => setOpenMenu((m) => (m === "type" ? null : "type"))}
@@ -201,7 +212,7 @@ export function BrowseClient() {
             ▾
           </button>
           {openMenu === "type" && (
-            <div className="absolute top-[calc(100%+4px)] left-0 z-100 min-w-[180px] border border-line-strong bg-surface py-2">
+            <div className="absolute top-[calc(100%+4px)] left-0 z-[100] min-w-[180px] border border-line-strong bg-surface py-2">
               {allTypes.map((t) => (
                 <label key={t} className="flex cursor-pointer items-center gap-2 px-3.5 py-1.5 text-[13px] whitespace-nowrap text-ink-dim hover:bg-elevated">
                   <input
@@ -217,7 +228,7 @@ export function BrowseClient() {
           )}
         </div>
 
-        <div className="relative" onClick={(e) => e.stopPropagation()}>
+        <div className="relative">
           <button
             type="button"
             onClick={() => setOpenMenu((m) => (m === "member" ? null : "member"))}
@@ -231,7 +242,7 @@ export function BrowseClient() {
             ▾
           </button>
           {openMenu === "member" && (
-            <div className="absolute top-[calc(100%+4px)] left-0 z-100 min-w-[180px] border border-line-strong bg-surface py-2">
+            <div className="absolute top-[calc(100%+4px)] left-0 z-[100] min-w-[180px] border border-line-strong bg-surface py-2">
               {MEMBERS.map((m) => (
                 <label key={m} className="flex cursor-pointer items-center gap-2 px-3.5 py-1.5 text-[13px] whitespace-nowrap text-ink-dim hover:bg-elevated">
                   <input
