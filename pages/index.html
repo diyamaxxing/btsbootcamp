@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/png" href="../favicon.png" />
   <title>Browse — BTS Bootcamp</title>
   <link rel="stylesheet" href="../css/main.css" />
   <link rel="stylesheet" href="../css/home.css" />
@@ -126,7 +127,13 @@
         // Checks tags as well as type, same reasoning as mainmuster.html's
         // type carousels — cross-tagged videos need to match either.
         if (state.types.size && !state.types.has(v.type) && !(v.tags || []).some(t => state.types.has(t))) return false;
-        if (state.members.size && !(v.members || []).some(m => state.members.has(m))) return false;
+        // Excludes full-group (all 7) videos from a member-filtered search —
+        // otherwise every group MV/bomb/etc. would flood results for every
+        // single member, defeating the point of searching by member at all.
+        if (state.members.size) {
+          const members = v.members || [];
+          if (members.length === 7 || !members.some(m => state.members.has(m))) return false;
+        }
 
         if (state.eraFrom || state.eraTo) {
           const idx = eraIndex(v.era);
@@ -150,7 +157,7 @@
       }).sort((a, b) => scoreVideo(b) - scoreVideo(a));
     }
 
-    // With 1,589 videos, rendering the full unfiltered catalog by default
+    // With 2,767 videos, rendering the full unfiltered catalog by default
     // would be a wall of cards with no context — results only render once
     // the visitor has picked at least one filter (see renderResults()).
     function isFiltered() {
@@ -358,7 +365,10 @@
     ]).then(([videos, eras]) => {
       ALL_VIDEOS = videos;
       ALL_ERAS   = eras;
-      ALL_TYPES  = [...new Set(videos.map(v => v.type))].sort();
+      // Folds in tags (Fancam, Music Show, etc.) alongside type, since the
+      // filter logic below already checks both — otherwise tag-only categories
+      // would match videos but never get a checkbox to select them from.
+      ALL_TYPES  = [...new Set(videos.flatMap(v => [v.type, ...(v.tags || [])]))].sort();
       readFromURL();
       render();
     }).catch(err => {

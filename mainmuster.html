@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Main MusterWA</title>
+  <link rel="icon" type="image/png" href="favicon.png" />
+  <title>BTSBOOTCAMP Main Muster</title>
   <link rel="stylesheet" href="css/main.css" />
   <link rel="stylesheet" href="css/home.css" />
   <script src="js/analytics.js"></script>
@@ -68,28 +69,6 @@
       return topN(recent.length >= n ? recent : videos, n);
     }
 
-    // ── stats bar ────────────────────────────────────────────────────────────
-    function renderStats() {
-      const active   = ALL_VIDEOS.filter(v => v.status === "active");
-      const totalSec = active.reduce((s, v) => s + (v.duration_sec || 0), 0);
-      const eras     = new Set(active.map(v => v.era).filter(Boolean)).size;
-      const since    = active.filter(v => v.air_date).sort((a, b) => a.air_date.localeCompare(b.air_date))[0];
-
-      const typeCounts = ALL_TYPES.map(t => {
-        const n = active.filter(v => v.type === t).length;
-        return `<div class="stat"><span class="stat-num">${n.toLocaleString()}</span><span class="stat-label">${t}s</span></div>`;
-      }).join("");
-
-      document.getElementById("stats-bar").innerHTML = `
-        <section id="stats">
-          <div class="stat"><span class="stat-num">${active.length.toLocaleString()}</span><span class="stat-label">Videos</span></div>
-          ${typeCounts}
-          <div class="stat"><span class="stat-num">${fmtHours(totalSec)}</span><span class="stat-label">Total Runtime</span></div>
-          <div class="stat"><span class="stat-num">${eras}</span><span class="stat-label">Eras</span></div>
-          <div class="stat"><span class="stat-num">${since ? since.air_date.slice(0, 4) : "—"}</span><span class="stat-label">Since</span></div>
-        </section>`;
-    }
-
     // ── era carousel — navigates to browse page with era pre-set ─────────────
     // eraFrom and eraTo are set to the SAME era to express "just this one
     // era" using the browse page's range-filter params, rather than adding
@@ -146,26 +125,6 @@
         </section>`;
     }
 
-    // ── era grid — links to browse page with filter pre-set ──────────────────
-    function renderEraGrid(active) {
-      const cards = ALL_ERAS.map(era => {
-        const count = active.filter(v => v.era === era.name).length;
-        if (!count) return "";
-        return `
-          <a class="era-card" href="pages/index.html?eraFrom=${encodeURIComponent(era.name)}&eraTo=${encodeURIComponent(era.name)}">
-            <span class="era-name">${era.name}</span>
-            <span class="era-count">${count} videos</span>
-            <span class="era-year">${era.start.slice(0, 4)}</span>
-          </a>`;
-      }).join("");
-
-      return `
-        <section id="era-section">
-          <h2>Browse by Era <a class="section-link" href="pages/index.html">Browse all →</a></h2>
-          <div id="era-grid">${cards}</div>
-        </section>`;
-    }
-
     // ── main render ──────────────────────────────────────────────────────────
     function render() {
       const active    = ALL_VIDEOS.filter(v => v.status === "active");
@@ -183,15 +142,14 @@
         const disclaimer = type === "Run BTS"
           ? `<p class="disclaimer">Originally aired on V LIVE — not sorted by era.</p>`
           : "";
-        return renderCarousel(`${type} <span class="count">${active.filter(v => v.type === type).length}</span>`, videos, disclaimer);
+        return renderCarousel(`${type} <span class="count">${active.filter(inType).length}</span>`, videos, disclaimer);
       }).join("");
 
       document.getElementById("content").innerHTML =
         renderHero(active) +
         renderCarousel("Trending", trending) +
         renderCarousel("Most Loved", mostLoved) +
-        typeCarousels +
-        renderEraGrid(active);
+        typeCarousels;
     }
 
     // ── boot ─────────────────────────────────────────────────────────────────
@@ -201,8 +159,10 @@
     ]).then(([videos, eras]) => {
       ALL_VIDEOS = videos;
       ALL_ERAS   = eras;
-      ALL_TYPES  = [...new Set(videos.map(v => v.type))].sort();
-      renderStats();
+      // Folds in tags (Fancam, Music Show, etc.) alongside type, since a
+      // carousel for a tag-only category needs to exist for inType() below
+      // to have something to render into.
+      ALL_TYPES  = [...new Set(videos.flatMap(v => [v.type, ...(v.tags || [])]))].sort();
       renderEraCarousel();
       render();
     }).catch(err => {
