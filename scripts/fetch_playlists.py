@@ -67,6 +67,13 @@ PLAYLISTS = [
         "id_prefix":   "episode",
         "out_file":    "bts_episodes.csv",
     },
+    {
+        "playlist_id": "PL5hrGMysD_Gtq6k75-TwOO3N7FWPya5XW",
+        "type":        "BTS On Air",
+        "series":      "BTS On Air",
+        "id_prefix":   "on-air",
+        "out_file":    "bts_on_air.csv",
+    },
 ]
 
 

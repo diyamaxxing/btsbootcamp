@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
 """
-Converts all CSVs in data/raws/ into data/videos.json.
-Also auto-assigns era from data/eras.json based on air_date.
+Converts all CSVs in data/raws/ into public/data/videos.json.
+Also auto-assigns era from public/data/eras.json based on air_date.
 Run BTS is excluded from era assignment (era stays null).
 Safe to re-run any time — always rebuilds from the CSVs.
 
 Also computes two things automatically from title text (see ARCHITECTURE_DECISIONS.md
 for the reasoning): cross-category tags and a shared "song" key for the recommender.
+
+videos.json/eras.json live under public/data/ (not data/) since the Next.js
+migration — they're fetched client-side at runtime from the static export,
+same as before, just relocated so there's a single source-of-truth location
+with no copy step needed in CI. See ARCHITECTURE_DECISIONS.md's
+framework-migration entry.
 
 Usage:
     python3 scripts/build_videos_json.py
@@ -18,8 +24,8 @@ import re
 from pathlib import Path
 
 RAWS_DIR  = Path(__file__).parent.parent / "data" / "raws"
-ERAS_FILE = Path(__file__).parent.parent / "data" / "eras.json"
-OUT_FILE  = Path(__file__).parent.parent / "data" / "videos.json"
+ERAS_FILE = Path(__file__).parent.parent / "public" / "data" / "eras.json"
+OUT_FILE  = Path(__file__).parent.parent / "public" / "data" / "videos.json"
 
 CSV_FILES = [
     "mvs.csv",
@@ -27,6 +33,7 @@ CSV_FILES = [
     "dance_practices.csv",
     "run_bts.csv",
     "bts_episodes.csv",
+    "bts_on_air.csv",
 ]
 
 # types excluded from era auto-assignment
@@ -47,6 +54,20 @@ ERA_EXEMPT_TYPES = {"Run BTS"}
 CATEGORY_PATTERNS = {
     "Dance Practice": re.compile(r"['\"‘’][^'\"‘’]+['\"‘’]\s*Dance Practice(?:\s*\([^)]*\))?\s*(?:-\s*BTS.*)?$", re.IGNORECASE),
     "MV":             re.compile(r"['\"‘’][^'\"‘’]+['\"‘’]\s*Official MV", re.IGNORECASE),
+    # Added for the "BTS On Air" playlist (mixed fancams/broadcast/talk-show
+    # appearances, no single clean type) — derived from scripts/word_frequency.py
+    # run against the real titles, not guessed. "FanCam"/"FaceCam"/"FullCam" all
+    # show up as one compound word in the actual titles (e.g. "(Jimin FaceCam)"),
+    # so no separate whitespace-tolerant variant is needed.
+    "Fancam":         re.compile(r"\b(?:fan|face|full)cam\b", re.IGNORECASE),
+    # Korean broadcast music shows — matches both the English handle (@MCOUNTDOWN,
+    # Music Bank, Inkigayo) and the Korean show name, since titles use either.
+    "Music Show":     re.compile(r"mcountdown|music\s*bank|inkigayo|인기가요|엠카운트다운|뮤직뱅크", re.IGNORECASE),
+    "Talk Show":      re.compile(r"tonight\s+show|jimmy\s+fallon", re.IGNORECASE),
+    # Excludes "V Live" (the old Naver livestreaming app, unrelated to a live
+    # performance) and "Can't Live Without" (GQ-style listicle title), the two
+    # false-positive shapes found when checking this against every real title.
+    "Live Performance": re.compile(r"(?<!v )\blive\b(?!\s+without)", re.IGNORECASE),
 }
 
 # ── song/release extraction (for the recommender, not for tags) ─────────────
