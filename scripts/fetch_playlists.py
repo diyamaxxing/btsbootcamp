@@ -27,7 +27,7 @@ if not API_KEY:
     raise SystemExit("Error: YOUTUBE_API_KEY environment variable not set.")
 
 RAWS_DIR = Path(__file__).parent.parent / "data" / "raws"
-FIELDS = ["id", "title", "upload_date", "air_date", "era", "type", "series", "episode", "url", "thumbnail", "members", "subtitles", "duration_sec", "description", "status", "view_count", "like_count"]
+FIELDS = ["id", "title", "upload_date", "air_date", "era", "type", "series", "episode", "url", "thumbnail", "members", "subtitles", "duration_sec", "description", "status", "view_count", "like_count", "extra_tags"]
 
 BULK_UPLOAD_DATE = "2022-12-24"  # date BTS batch-uploaded old V Live content to YouTube
 
@@ -85,8 +85,21 @@ def api_get(endpoint, params):
 
 
 def fetch_all_playlist_items(playlist_id):
-    """Page through playlistItems until nextPageToken is gone."""
+    """
+    Page through playlistItems until nextPageToken is gone.
+
+    Dedupes by video_id, keeping the first (earliest position) occurrence —
+    YouTube playlists can genuinely list the same video twice (found and
+    collapsed after the fact once, see scripts/collapse_duplicate_videos.py
+    and ARCHITECTURE_DECISIONS.md); this stops that from silently coming
+    back on every future refetch. Only catches the same-video-in-one-playlist
+    case — the same video legitimately appearing across two *different*
+    playlists (e.g. a Bangtan Bomb also in Dance Practice) isn't caught here,
+    since each playlist is fetched independently; that case is a known,
+    documented follow-up, not silently handled.
+    """
     items = []
+    seen_video_ids = set()
     params = {
         "part":       "snippet",
         "playlistId": playlist_id,
@@ -101,8 +114,12 @@ def fetch_all_playlist_items(playlist_id):
             resource = snippet.get("resourceId", {})
             if resource.get("kind") != "youtube#video":
                 continue
+            video_id = resource["videoId"]
+            if video_id in seen_video_ids:
+                continue
+            seen_video_ids.add(video_id)
             items.append({
-                "video_id": resource["videoId"],
+                "video_id": video_id,
                 "title":    snippet.get("title", ""),
                 "position": snippet.get("position", 0),
             })
@@ -195,6 +212,7 @@ def process_playlist(pl):
                     "members":     row.get("members", "RM|Jin|Suga|J-Hope|Jimin|V|Jungkook"),
                     "subtitles":   row.get("subtitles", ""),
                     "description": row.get("description", ""),
+                    "extra_tags":  row.get("extra_tags", ""),
                 }
 
     rows = []
@@ -227,6 +245,7 @@ def process_playlist(pl):
             "status":       status,
             "view_count":   detail.get("view_count", 0),
             "like_count":   detail.get("like_count", 0),
+            "extra_tags":   prev.get("extra_tags", ""),
         })
 
     with open(out_path, "w", newline="", encoding="utf-8") as f:
@@ -242,6 +261,14 @@ def main():
     for pl in PLAYLISTS:
         process_playlist(pl)
     print("\nAll playlists complete.")
+
+    # Catches the one duplicate shape fetch_all_playlist_items's own dedup
+    # can't: the same video legitimately listed across two DIFFERENT
+    # playlists (each fetched independently above). See
+    # collapse_duplicate_videos.py's docstring and ARCHITECTURE_DECISIONS.md.
+    print("\nChecking for cross-playlist duplicate videos...")
+    import collapse_duplicate_videos
+    collapse_duplicate_videos.main(dry_run=False)
 
 
 if __name__ == "__main__":
